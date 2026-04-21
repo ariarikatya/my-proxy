@@ -24,8 +24,8 @@ export default async function handler(req, res) {
       const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules[0] : fields.modules) : "красивый сад";
       const filters = fields.filters ? (Array.isArray(fields.filters) ? fields.filters.join(", ") : fields.filters) : "";
       
-  const fullPrompt = `Это реальное фото объекта. Твоя задача — выполнить визуальное дополнение. 
-ОСТАВЬ БЕЗ ИЗМЕНЕНИЙ: основной объект (здание/дом), ландшафт (горы/лес/поле) и небо.
+  const fullPrompt = `Отредактируй это фото участка. 
+ОСТАВЬ БЕЗ ИЗМЕНЕНИЙ: основной объект (здание), ландшафт и небо.
 ДОБАВЬ ПОВЕРХ ФОТО: ${filters}. 
 Следи, чтобы дорожки и растения вписывались в перспективу и рельеф данного конкретного места. 
 Стиль: профессиональная архитектурная визуализация.`.trim();
