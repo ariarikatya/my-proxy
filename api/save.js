@@ -50,7 +50,9 @@ export default async function handler(req, res) {
       }
 
       // 3. ПРОСИМ ИИ ИЗМЕНИТЬ ФОТО
+      // 3. ПРОСИМ ИИ ИЗМЕНИТЬ ФОТО (с жестким триггером на рисование)
       const modules = fields.modules || "красивый сад";
+      
       const genResponse = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -58,12 +60,11 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${access_token}`
         },
         body: JSON.stringify({
-          model: "GigaChat-Pro", // <--- Попробуй поменять на Pro или Max
+          model: "GigaChat-Max", // Попробуй именно MAX, она самая умная
           messages: [{ 
             role: "user", 
-            // Слово "Нарисуй" — это магический триггер для GigaChat
-            content: `Нарисуй ландшафтный дизайн сада, используя это фото как основу. Добавь: ${modules}.`,
-            attachments: fileId ? [fileId] : []
+            // Мы убираем лишние вежливые слова и оставляем только команду
+            content: `Нарисуй ландшафтный дизайн сада. Элементы: ${modules}. Использовать стиль фотореализма. <img src="${fileId}">`
           }],
           function_call: "none"
         })
