@@ -20,6 +20,8 @@ export default async function handler(req, res) {
   const form = new IncomingForm();
   form.parse(req, async (err, fields, files) => {
     try {
+      const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules[0] : fields.modules) : "красивый сад";
+      // -------------------------
       // 1. Получаем токен
       const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
         method: 'POST',
@@ -32,12 +34,15 @@ export default async function handler(req, res) {
       });
       const { access_token } = await authResponse.json();
 
-      // 2. ЗАГРУЖАЕМ ТВОЁ ФОТО В СБЕР (чтобы он его "увидел")
+      // 2. ЗАГРУЖАЕМ ТВОЁ ФОТО В СБЕР
       let fileId = null;
-      if (files.image) {
+      if (files.image && files.image[0]) {
           const fileData = fs.readFileSync(files.image[0].filepath);
           const uploadFormData = new FormData();
-          uploadFormData.append('file', new Blob([fileData]), files.image[0].originalFilename);
+          
+          // Используем Blob из глобального контекста Node.js
+          const fileBlob = new Blob([fileData], { type: files.image[0].mimetype });
+          uploadFormData.append('file', fileBlob, files.image[0].originalFilename);
           uploadFormData.append('purpose', 'general');
 
           const uploadRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
@@ -45,8 +50,10 @@ export default async function handler(req, res) {
               headers: { 'Authorization': `Bearer ${access_token}` },
               body: uploadFormData
           });
+          
           const uploadData = await uploadRes.json();
           fileId = uploadData.id;
+          console.log("Загружен файл, ID:", fileId);
       }
 
       // 3. ЗАПРОС К GIGACHAT С ВКЛЮЧЕННОЙ ГЕНЕРАЦИЕЙ
