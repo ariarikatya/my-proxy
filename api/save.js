@@ -24,11 +24,7 @@ export default async function handler(req, res) {
       const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules[0] : fields.modules) : "красивый сад";
       const filters = fields.filters ? (Array.isArray(fields.filters) ? fields.filters.join(", ") : fields.filters) : "";
       
-  const fullPrompt = `Отредактируй это фото участка. 
-ОСТАВЬ БЕЗ ИЗМЕНЕНИЙ: основной объект (здание), ландшафт и небо.
-ДОБАВЬ ПОВЕРХ ФОТО: ${filters}. 
-Следи, чтобы дорожки и растения вписывались в перспективу и рельеф данного конкретного места. 
-Стиль: профессиональная архитектурная визуализация.`.trim();
+  const fullPrompt = `Отредактируй это фото моего участка. Сохрани исходное расположение всех изображенных объектов. Добавь элементы: ${modules}. Обязательно используй: ${filters}. Стиль: реалистичное фото.`.trim();
       // 2. Получаем токен GigaChat
       const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
         method: 'POST',
