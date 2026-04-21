@@ -76,7 +76,7 @@ export default async function handler(req, res) {
             },
             { 
               role: "user", 
-              content: `${fullPrompt} <img src="${fileId}">` 
+              content: `Нарисуй: ${fullPrompt} <img src="${fileId}">` 
             }
           ],
           function_call: "auto"
