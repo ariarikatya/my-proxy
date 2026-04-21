@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 // Вставь сюда свой Client ID и Client Secret из кабинета Сбера
 const CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
