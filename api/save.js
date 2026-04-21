@@ -1,4 +1,5 @@
 import { IncomingForm } from 'formidable';
+import fs from 'fs';
 import Buffer from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -19,7 +20,7 @@ export default async function handler(req, res) {
   const form = new IncomingForm();
   form.parse(req, async (err, fields, files) => {
     try {
-      // 1. Токен
+      // 1. Получаем токен
       const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
         method: 'POST',
         headers: {
@@ -31,7 +32,25 @@ export default async function handler(req, res) {
       });
       const { access_token } = await authResponse.json();
 
-      // 2. Генерация (запрос более жесткий, чтобы точно была картинка)
+      // 2. ЗАГРУЖАЕМ ТВОЁ ФОТО В СБЕР (чтобы он его "увидел")
+      let fileId = null;
+      if (files.image) {
+          const fileData = fs.readFileSync(files.image[0].filepath);
+          const uploadFormData = new FormData();
+          uploadFormData.append('file', new Blob([fileData]), files.image[0].originalFilename);
+          uploadFormData.append('purpose', 'general');
+
+          const uploadRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${access_token}` },
+              body: uploadFormData
+          });
+          const uploadData = await uploadRes.json();
+          fileId = uploadData.id;
+      }
+
+      // 3. ПРОСИМ ИИ ИЗМЕНИТЬ ФОТО
+      const modules = fields.modules || "красивый сад";
       const genResponse = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -40,36 +59,44 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           model: "GigaChat",
-          messages: [{ role: "user", content: `Нарисуй фотореалистичный дизайн сада. Элементы: ${fields.modules || 'газон'}.` }]
+          messages: [{ 
+            role: "user", 
+            content: `Нарисуй ландшафтный дизайн на основе прикрепленного фото. Добавь элементы: ${modules}. Верни результат в виде картинки.`,
+            attachments: fileId ? [fileId] : [] // Передаем ID твоего фото!
+          }],
+          function_call: "none"
         })
       });
 
       const genData = await genResponse.json();
-      const content = genData.choices[0].message.content;
+      const content = genData.choices?.[0]?.message?.content || "";
+      console.log("Ответ ИИ:", content); // Увидишь в логах Vercel
+
       const imgMatch = content.match(/<img src="([^"]+)"/);
 
       if (imgMatch) {
-        const fileId = imgMatch[1];
-        
-        // 3. СКАЧИВАЕМ КАРТИНКУ (Proxy-запрос)
-        const fileResponse = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${fileId}/content`, {
+        const resultFileId = imgMatch[1];
+        const fileResponse = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultFileId}/content`, {
           headers: { 'Authorization': `Bearer ${access_token}` }
         });
-
         const arrayBuffer = await fileResponse.arrayBuffer();
         const base64 = Buffer.Buffer.from(arrayBuffer).toString('base64');
         
-        // Отправляем готовую картинку в браузер!
         return res.status(200).json({
           success: true,
           imageUrl: `data:image/png;base64,${base64}`
         });
       }
 
-      // Если ИИ не нарисовал, но что-то ответил
-      res.status(200).json({ success: true, imageUrl: 'https://img.freepik.com/free-photo/beautiful-backyard-with-green-grass-and-trees_23-2149033327.jpg' });
+      // Если всё же картинки нет, вернем текст от ИИ для отладки
+      res.status(200).json({ 
+          success: true, 
+          imageUrl: 'https://img.freepik.com/free-photo/beautiful-backyard-with-green-grass-and-trees_23-2149033327.jpg',
+          debug: content 
+      });
 
     } catch (error) {
+      console.error("Ошибка сервера:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
