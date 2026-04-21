@@ -58,11 +58,12 @@ export default async function handler(req, res) {
           'Authorization': `Bearer ${access_token}`
         },
         body: JSON.stringify({
-          model: "GigaChat",
+          model: "GigaChat-Pro", // <--- Попробуй поменять на Pro или Max
           messages: [{ 
             role: "user", 
-            content: `Нарисуй ландшафтный дизайн на основе прикрепленного фото. Добавь элементы: ${modules}. Верни результат в виде картинки.`,
-            attachments: fileId ? [fileId] : [] // Передаем ID твоего фото!
+            // Слово "Нарисуй" — это магический триггер для GigaChat
+            content: `Нарисуй ландшафтный дизайн сада, используя это фото как основу. Добавь: ${modules}.`,
+            attachments: fileId ? [fileId] : []
           }],
           function_call: "none"
         })
