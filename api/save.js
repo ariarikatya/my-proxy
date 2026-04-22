@@ -4,9 +4,13 @@ import { Buffer } from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
+// Ключи (Сбер)
 const CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 const authKey = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
+
+// Ключ (Hugging Face) — ВСТАВЬ СВОЙ ТУТ
+const HF_TOKEN = "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"; 
 
 export const config = { api: { bodyParser: false } };
 
@@ -20,76 +24,25 @@ export default async function handler(req, res) {
   const form = new IncomingForm();
   form.parse(req, async (err, fields, files) => {
     try {
-      // 1. Собираем данные: основной текст + выбранные фильтры (газон, туи и т.д.)
-      const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules[0] : fields.modules) : "красивый сад";
-      const filters = fields.filters ? (Array.isArray(fields.filters) ? fields.filters.join(", ") : fields.filters) : "";
+      const filters = fields.modules ? (Array.isArray(fields.modules) ? fields.modules.join(', ') : fields.modules) : "landscape design";
+      const engine = fields.engine ? (Array.isArray(fields.engine) ? fields.engine[0] : fields.engine) : "sber";
       
-  const fullPrompt = `Отредактируй это фото моего участка. Сохрани исходное расположение всех изображенных объектов. Добавь элементы: ${modules}. Обязательно используй: ${filters}. Стиль: реалистичное фото.`.trim();
-      // 2. Получаем токен GigaChat
-      const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807',
-          'Authorization': `Basic ${authKey}`
-        },
-        body: 'scope=GIGACHAT_API_PERS'
-      });
-      const { access_token } = await authResponse.json();
+      const fileData = fs.readFileSync(files.image[0].filepath);
 
-      // 3. Загружаем исходное фото в Сбер
-      let fileId = null;
-      if (files.image && files.image[0]) {
-          const fileData = fs.readFileSync(files.image[0].filepath);
-          const uploadFormData = new FormData();
-          const fileBlob = new Blob([fileData], { type: files.image[0].mimetype });
-          
-          uploadFormData.append('file', fileBlob, files.image[0].originalFilename);
-          uploadFormData.append('purpose', 'general');
+      // --- ВАРИАНТ 1: HUGGING FACE (Stable Diffusion) ---
+      if (engine === 'hf') {
+        const hfResponse = await fetch(
+          "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
+          {
+            headers: { Authorization: `Bearer ${HF_TOKEN}`, "Content-Type": "application/json" },
+            method: "POST",
+            body: fileData // SDXL через Inference API хорошо кушает бинарники
+          }
+        );
 
-          const uploadRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${access_token}` },
-              body: uploadFormData
-          });
-          const uploadData = await uploadRes.json();
-          fileId = uploadData.id;
-      }
-
-      // 4. Запрос на генерацию (с учетом всех фильтров)
-      const genResponse = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${access_token}`
-        },
-        body: JSON.stringify({
-          model: "GigaChat", 
-          messages: [
-            {
-              role: "system",
-              content: "Ты — профессиональный ландшафтный дизайнер. Ты умеешь аккуратно вписывать новые элементы (газон, растения, дорожки) в готовые фотографии участков, сохраняя строения."
-            },
-            { 
-              role: "user", 
-              content: `Нарисуй: ${fullPrompt} <img src="${fileId}">` 
-            }
-          ],
-          function_call: "auto"
-        })
-      });
-
-      const genData = await genResponse.json();
-      const content = genData.choices?.[0]?.message?.content || "";
-      const imgMatch = content.match(/<img src="([^"]+)"/);
-
-      // 5. Если картинка сгенерирована — скачиваем её и отдаем на сайт
-      if (imgMatch) {
-        const resultFileId = imgMatch[1];
-        const fileResponse = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultFileId}/content`, {
-          headers: { 'Authorization': `Bearer ${access_token}` }
-        });
-        const arrayBuffer = await fileResponse.arrayBuffer();
+        if (!hfResponse.ok) throw new Error('HF API Error');
+        
+        const arrayBuffer = await hfResponse.arrayBuffer();
         const base64 = Buffer.from(arrayBuffer).toString('base64');
         
         return res.status(200).json({
@@ -98,15 +51,57 @@ export default async function handler(req, res) {
         });
       }
 
-      // Запасной вариант (если ИИ просто прислал текст)
-      res.status(200).json({ 
-          success: true, 
-          imageUrl: 'https://img.freepik.com/free-photo/beautiful-backyard-with-green-grass-and-trees_23-2149033327.jpg',
-          debug: content 
+      // --- ВАРИАНТ 2: GIGACHAT (Сбер) ---
+      // 1. Получаем токен Сбера
+      const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807', 'Authorization': `Basic ${authKey}` },
+        body: 'scope=GIGACHAT_API_PERS'
+      });
+      const { access_token } = await authResponse.json();
+
+      // 2. Загружаем файл
+      const uploadFormData = new FormData();
+      const fileBlob = new Blob([fileData], { type: files.image[0].mimetype });
+      uploadFormData.append('file', fileBlob, files.image[0].originalFilename);
+      uploadFormData.append('purpose', 'general');
+
+      const uploadRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${access_token}` },
+          body: uploadFormData
+      });
+      const { id: fileId } = await uploadRes.json();
+
+      // 3. Генерация
+      const genResponse = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
+        body: JSON.stringify({
+          model: "GigaChat", 
+          messages: [{ role: "user", content: `<img src="${fileId}"> Нарисуй ландшафтный дизайн, добавь: ${filters}. Сохрани дом и забор.` }],
+          function_call: "auto"
+        })
       });
 
+      const genData = await genResponse.json();
+      const content = genData.choices?.[0]?.message?.content || "";
+      const imgMatch = content.match(/<img src="([^"]+)"/);
+
+      if (imgMatch) {
+        const resultFileId = imgMatch[1];
+        const fileResponse = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultFileId}/content`, {
+          headers: { 'Authorization': `Bearer ${access_token}` }
+        });
+        const finalBuffer = await fileResponse.arrayBuffer();
+        const base64 = Buffer.from(finalBuffer).toString('base64');
+        return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${base64}` });
+      }
+
+      throw new Error('Image not generated');
+
     } catch (error) {
-      console.error("Ошибка сервера:", error);
+      console.error("Critical Error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
   });
