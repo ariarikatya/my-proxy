@@ -34,31 +34,45 @@ export default async function handler(req, res) {
             const engine = fields.engine ? (Array.isArray(fields.engine) ? fields.engine[0] : fields.engine) : "sber";
             const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules.join(', ') : fields.modules) : "landscape design";
 
-            // --- HUGGING FACE ---
-            if (engine === 'hf') {
-                const hfResponse = await fetch(
-                    "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
-                    {
-                        headers: { 
-                            Authorization: `Bearer ${HF_TOKEN}`,
-                            "Content-Type": "application/json" 
-                        },
-                        method: "POST",
-                        body: JSON.stringify({ 
-                            inputs: `High quality landscape design, garden, ${modules}, realistic, 8k`,
-                        })
-                    }
-                );
-
-                if (!hfResponse.ok) {
-                    const errText = await hfResponse.text();
-                    throw new Error(`HF Error: ${hfResponse.status} - ${errText}`);
+            // --- ВАРИАНТ 1: HUGGING FACE (Пробуем более доступную модель) ---
+if (engine === 'hf') {
+    console.log("Запуск Hugging Face с фильтрами:", modules);
+    
+    // Попробуем SD 2.1 — она почти всегда доступна бесплатно
+    const MODEL_ID = "stabilityai/stable-diffusion-2-1"; 
+    
+    const hfResponse = await fetch(
+        `https://api-inference.huggingface.co/models/${MODEL_ID}`,
+        {
+            headers: { 
+                "Authorization": `Bearer ${HF_TOKEN}`,
+                "Content-Type": "application/json" 
+            },
+            method: "POST",
+            body: JSON.stringify({ 
+                inputs: `Realistic landscape design, garden, house with fence, ${modules}, highly detailed, 8k resolution`,
+                parameters: {
+                    negative_prompt: "blurry, bad quality, distorted",
                 }
+            })
+        }
+    );
 
-                const arrayBuffer = await hfResponse.arrayBuffer();
-                const base64 = Buffer.from(arrayBuffer).toString('base64');
-                return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${base64}` });
-            }
+    if (!hfResponse.ok) {
+        const errText = await hfResponse.text();
+        // Если модель загружается (503), Vercel может выдать 500. 
+        // Если это так, просто подожди 30 секунд.
+        throw new Error(`HF Error: ${hfResponse.status} - ${errText}`);
+    }
+    
+    const arrayBuffer = await hfResponse.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    
+    return res.status(200).json({
+        success: true,
+        imageUrl: `data:image/jpeg;base64,${base64}`
+    });
+}
 
             // --- GIGACHAT (СБЕР) ---
             const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
