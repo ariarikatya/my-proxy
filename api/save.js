@@ -29,18 +29,34 @@ export default async function handler(req, res) {
       
       const fileData = fs.readFileSync(files.image[0].filepath);
 
-      // --- ВАРИАНТ 1: HUGGING FACE (Stable Diffusion) ---
+      // --- ВАРИАНТ 1: HUGGING FACE (Stable Diffusion XL) ---
       if (engine === 'hf') {
+        console.log("Запуск Hugging Face с фильтрами:", filters);
+        
+        // Для HF нам нужно отправить промпт. Мы склеим его из фильтров.
+        const hfPrompt = `Landscape design, backyard garden, ${filters}, highly detailed, realistic, 8k resolution`;
+
         const hfResponse = await fetch(
           "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0",
           {
-            headers: { Authorization: `Bearer ${HF_TOKEN}`, "Content-Type": "application/json" },
+            headers: { 
+                "Authorization": `Bearer ${HF_TOKEN}`,
+                "Content-Type": "application/json" 
+            },
             method: "POST",
-            body: fileData // SDXL через Inference API хорошо кушает бинарники
+            body: JSON.stringify({ 
+                inputs: hfPrompt,
+                // Если хочешь именно менять фото, то бесплатный API HF иногда капризничает.
+                // Пока сделаем генерацию по промпту, чтобы проверить связь.
+            })
           }
         );
 
-        if (!hfResponse.ok) throw new Error('HF API Error');
+        if (!hfResponse.ok) {
+            const errorText = await hfResponse.text();
+            console.error("HF Error Details:", errorText);
+            throw new Error(`HF API Error: ${hfResponse.status}`);
+        }
         
         const arrayBuffer = await hfResponse.arrayBuffer();
         const base64 = Buffer.from(arrayBuffer).toString('base64');
