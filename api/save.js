@@ -34,13 +34,13 @@ export default async function handler(req, res) {
             const engine = fields.engine ? (Array.isArray(fields.engine) ? fields.engine[0] : fields.engine) : "sber";
             const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules.join(', ') : fields.modules) : "landscape design";
 
-            // --- ВАРИАНТ 1: HUGGING FACE (Пробуем более доступную модель) ---
+           // --- ВАРИАНТ 1: HUGGING FACE (Используем самую актуальную модель) ---
 if (engine === 'hf') {
-    console.log("Запуск Hugging Face с фильтрами:", modules);
+    console.log("Запуск генерации через FLUX...");
     
-    // Попробуем SD 2.1 — она почти всегда доступна бесплатно
-    const MODEL_ID = "stabilityai/stable-diffusion-2-1"; 
-    
+    // FLUX.1-schnell — сейчас самая стабильная и мощная модель на HF
+    const MODEL_ID = "black-forest-labs/FLUX.1-schnell"; 
+
     const hfResponse = await fetch(
         `https://api-inference.huggingface.co/models/${MODEL_ID}`,
         {
@@ -50,19 +50,21 @@ if (engine === 'hf') {
             },
             method: "POST",
             body: JSON.stringify({ 
-                inputs: `Realistic landscape design, garden, house with fence, ${modules}, highly detailed, 8k resolution`,
-                parameters: {
-                    negative_prompt: "blurry, bad quality, distorted",
-                }
+                inputs: `A professional 3D landscape design project of a backyard, featuring ${modules}. High quality, photorealistic, cinematic lighting, 8k resolution.`,
             })
         }
     );
 
+    // Если модель 404 или 503 (грузится)
     if (!hfResponse.ok) {
-        const errText = await hfResponse.text();
-        // Если модель загружается (503), Vercel может выдать 500. 
-        // Если это так, просто подожди 30 секунд.
-        throw new Error(`HF Error: ${hfResponse.status} - ${errText}`);
+        const errorText = await hfResponse.text();
+        console.error("HF Детальная ошибка:", errorText);
+        
+        // Если модель просто не найдена, попробуем "старую добрую" SD 1.5 как план Б
+        return res.status(hfResponse.status).json({ 
+            success: false, 
+            error: `Модель HF (${MODEL_ID}) ответила: ${hfResponse.status}. Попробуйте через минуту.` 
+        });
     }
     
     const arrayBuffer = await hfResponse.arrayBuffer();
