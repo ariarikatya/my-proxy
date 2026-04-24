@@ -38,16 +38,19 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
-                const modules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "красивый ландшафтный дизайн");
+                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "красивый сад");
 
-                // --- ЯНДЕКС ---
+                // --- ЯНДЕКС (Улучшенный промпт) ---
                 if (engine === 'yandex') {
+                    // Формируем строгий промпт для Яндекса
+                    const yandPrompt = `Реалистичное фото ландшафтного дизайна, строго сохраняя положение дома, строений и забора из оригинального фото. На свободных местах добавить: ${rawModules}. Фотореализм, 8k, профессиональный дизайн сада.`;
+                    
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
                         headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
                         body: JSON.stringify({
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
-                            messages: [{ weight: 1, text: `Ландшафтный дизайн участка, фотореализм, высокое разрешение, ${modules}` }]
+                            messages: [{ weight: 1, text: yandPrompt }]
                         })
                     });
                     const op = await yandRes.json();
@@ -55,7 +58,7 @@ export default async function handler(req, res) {
                     return resolve();
                 }
 
-                // --- СБЕР (Улучшенная версия на базе твоего старого кода) ---
+                // --- СБЕР (Улучшенный промпт и логика) ---
                 const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
                 const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
                     method: 'POST',
@@ -68,7 +71,7 @@ export default async function handler(req, res) {
                 });
                 const { access_token } = await authRes.json();
 
-                // Загружаем исходник
+                // Загружаем исходник в Сбер
                 const sberForm = new FormData();
                 sberForm.append('file', new Blob([fileData]), 'image.jpg');
                 sberForm.append('purpose', 'general');
@@ -80,7 +83,9 @@ export default async function handler(req, res) {
                 });
                 const upData = await upRes.json();
 
-                // ЗАПРОС НА ГЕНЕРАЦИЮ (Добавили function_call)
+                // Формируем промпт для Сбера (максимально просто, чтобы не упал)
+                const sberPrompt = `Нарисуй ландшафтный дизайн. Тот же ракурс и те же здания, что на фото. Добавь на участок: ${rawModules}. Фотореалистично, дневной свет. Используй фото как основу: <img src="${upData.id}">`;
+
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
                     method: 'POST',
                     headers: { 
@@ -92,15 +97,13 @@ export default async function handler(req, res) {
                         messages: [
                             {
                                 role: "system",
-                                content: "Ты — ландшафтный дизайнер. Ты генерируешь изображения с помощью функции text2image."
+                                content: "Ты ландшафтный дизайнер. Ты создаешь реалистичные проекты, сохраняя архитектуру клиента."
                             },
                             { 
                                 role: "user", 
-                                // Просим максимально прямо, как в примере с розовым котом
-                                content: `Нарисуй ландшафтный дизайн участка: ${modules}. Используй это фото как основу: <img src="${upData.id}">` 
+                                content: sberPrompt
                             }
                         ],
-                        // ВОТ ОНО — ТО САМОЕ ИЗ ДОКУМЕНТАЦИИ:
                         function_call: "auto" 
                     })
                 });
@@ -131,8 +134,7 @@ export default async function handler(req, res) {
                         imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` 
                     });
                 } else {
-                    // Если всё равно прислал текст — выводим его для отладки
-                    throw new Error("Сбер опять закапризничал: " + content.substring(0, 100));
+                    throw new Error("Сбер не сгенерировал изображение: " + content.substring(0, 100));
                 }
 
             } catch (e) {
