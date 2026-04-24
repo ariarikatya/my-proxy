@@ -106,23 +106,33 @@ export default async function handler(req, res) {
             });
             
             const genData = await genRes.json();
-            const content = genData.choices[0].message.content;
-            const resFileId = content.match(/<img src="([^"]+)"/)[1];
-
-            // Получение контента
-            const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resFileId}/content`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const buffer = await fileRes.arrayBuffer();
             
-            return res.status(200).json({ 
-                success: true, 
-                imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` 
-            });
+            // Проверяем, пришел ли вообще ответ от Сбера
+            if (!genData.choices || !genData.choices[0]) {
+                throw new Error("Сбер не ответил на запрос. Попробуйте еще раз.");
+            }
 
-        } catch (error) {
-            console.error(error);
-            res.status(200).json({ success: false, error: error.message });
-        }
+            const content = genData.choices[0].message.content;
+            const match = content.match(/<img src="([^"]+)"/);
+
+            // Если тег img найден в тексте
+            if (match && match[1]) {
+                const resFileId = match[1];
+
+                // Получение контента самой картинки
+                const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resFileId}/content`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                const buffer = await fileRes.arrayBuffer();
+                
+                return res.status(200).json({ 
+                    success: true, 
+                    imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` 
+                });
+            } else {
+                // Если картинки нет, а пришел просто текст (отказ или ошибка ИИ)
+                throw new Error("Сбер прислал текст вместо фото: " + content);
+            }
     });
 }
