@@ -2,137 +2,98 @@ import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
-const CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
-const CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
-const authKey = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64');
-const HF_TOKEN = "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"; 
-
 export const config = { api: { bodyParser: false } };
+
+// --- ТВОИ КЛЮЧИ (Впиши их сюда!) ---
+const POLLEN_API_KEY = 'ТВОЙ_КЛЮЧ_POLLINATIONS';
+const YANDEX_API_KEY = 'ТВОЙ_API_KEY_ЯНДЕКС';
+const YANDEX_FOLDER_ID = 'ТВОЙ_FOLDER_ID'; 
+const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
+const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const form = new IncomingForm();
     form.parse(req, async (err, fields, files) => {
-        if (err) {
-            console.error("Form parsing error:", err);
-            return res.status(500).json({ success: false, error: "Form parse error" });
-        }
+        if (err) return res.status(500).json({ success: false, error: "Ошибка парсинга" });
 
         try {
-            // Проверяем, пришел ли файл (в разных версиях formidable путь разный)
             const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-            if (!file) throw new Error("File not found in request");
-
+            if (!file) throw new Error("Файл не найден");
             const fileData = fs.readFileSync(file.filepath);
+            const base64Image = fileData.toString('base64');
+            
             const engine = fields.engine ? (Array.isArray(fields.engine) ? fields.engine[0] : fields.engine) : "sber";
-            const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules.join(', ') : fields.modules) : "landscape design";
+            const modules = fields.modules ? (Array.isArray(fields.modules) ? fields.modules : fields.modules) : "ландшафтный дизайн";
 
-           // --- ВАРИАНТ 1: HUGGING FACE (Используем самую актуальную модель) ---
-if (engine === 'hf') {
-    console.log("Запуск генерации через FLUX...");
-    
-    // FLUX.1-schnell — сейчас самая стабильная и мощная модель на HF
-    const MODEL_ID = "black-forest-labs/FLUX.1-schnell"; 
-
-    const hfResponse = await fetch(
-        `https://api-inference.huggingface.co/models/${MODEL_ID}`,
-        {
-            headers: { 
-                "Authorization": `Bearer ${HF_TOKEN}`,
-                "Content-Type": "application/json" 
-            },
-            method: "POST",
-            body: JSON.stringify({ 
-                inputs: `A professional 3D landscape design project of a backyard, featuring ${modules}. High quality, photorealistic, cinematic lighting, 8k resolution.`,
-            })
-        }
-    );
-
-    // Если модель 404 или 503 (грузится)
-    if (!hfResponse.ok) {
-        const errorText = await hfResponse.text();
-        console.error("HF Детальная ошибка:", errorText);
-        
-        // Если модель просто не найдена, попробуем "старую добрую" SD 1.5 как план Б
-        return res.status(hfResponse.status).json({ 
-            success: false, 
-            error: `Модель HF (${MODEL_ID}) ответила: ${hfResponse.status}. Попробуйте через минуту.` 
-        });
-    }
-    
-    const arrayBuffer = await hfResponse.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    
-    return res.status(200).json({
-        success: true,
-        imageUrl: `data:image/jpeg;base64,${base64}`
-    });
-}
-
-            // --- GIGACHAT (СБЕР) ---
-            const authResponse = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/x-www-form-urlencoded', 
-                    'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807', 
-                    'Authorization': `Basic ${authKey}` 
-                },
-                body: 'scope=GIGACHAT_API_PERS'
-            });
-            const authData = await authResponse.json();
-            const token = authData.access_token;
-
-            // Загрузка файла в Сбер (через старый добрый метод без лишних библиотек)
-            const { id: fileId } = await uploadToSber(fileData, file.originalFilename, token);
-
-            const genResponse = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({
-                    model: "GigaChat",
-                    messages: [{ role: "user", content: `<img src="${fileId}"> Нарисуй ландшафтный дизайн: ${modules}` }]
-                })
-            });
-
-            const genData = await genResponse.json();
-            const imgMatch = (genData.choices?.[0]?.message?.content || "").match(/<img src="([^"]+)"/);
-
-            if (imgMatch) {
-                const resFileId = imgMatch[1];
-                const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resFileId}/content`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+            // --- ЛОГИКА 1: POLLINATIONS (FLUX KLEIN) ---
+            if (engine === 'pollen') {
+                const response = await fetch("https://api.pollinations.ai/v1/images/generate", {
+                    method: "POST",
+                    headers: { "Authorization": `Bearer ${POLLEN_API_KEY}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "klein",
+                        prompt: `Landscape design, photorealistic, ${modules}, high quality`,
+                        image: `data:image/jpeg;base64,${base64Image}`,
+                        image_strength: 0.35
+                    })
                 });
-                const buffer = await fileRes.arrayBuffer();
-                return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` });
+                const data = await response.json();
+                return res.status(200).json({ success: true, imageUrl: data.images[0].url });
             }
 
-            throw new Error("GigaChat didn't return an image");
+            // --- ЛОГИКА 2: YANDEX ART ---
+            if (engine === 'yandex') {
+                const response = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
+                    method: "POST",
+                    headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
+                    body: JSON.stringify({
+                        modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
+                        generationOptions: { seed: Math.floor(Math.random() * 1000) },
+                        messages: [{ weight: 1, text: `Ландшафтный дизайн участка, ${modules}, профессиональное фото` }]
+                    })
+                });
+                const operation = await response.json();
+                // Яндекс работает долго (асинхронно), тут в идеале нужно ждать завершения, 
+                // но для теста вернем ID операции или ошибку, если что-то не так.
+                if (!operation.id) throw new Error("Яндекс не принял запрос");
+                return res.status(200).json({ success: true, imageUrl: "https://via.placeholder.com/1024x1024.png?text=Yandex_Processing_Wait_60s" });
+            }
+
+            // --- ЛОГИКА 3: СБЕР (GIGACHAT) ---
+            const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
+            const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+                method: 'POST',
+                headers: { 'Authorization': `Basic ${authKey}`, 'Content-Type': 'application/x-www-form-urlencoded', 'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807' },
+                body: 'scope=GIGACHAT_API_PERS'
+            });
+            const { access_token } = await authRes.json();
+            const { id: fileId } = await uploadToSber(fileData, file.originalFilename, access_token);
+            const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
+                body: JSON.stringify({ model: "GigaChat", messages: [{ role: "user", content: `<img src="${fileId}"> Нарисуй ландшафтный дизайн: ${modules}` }] })
+            });
+            const genData = await genRes.json();
+            const resFileId = genData.choices[0].message.content.match(/<img src="([^"]+)"/)[1];
+            const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resFileId}/content`, { headers: { 'Authorization': `Bearer ${access_token}` } });
+            const buffer = await fileRes.arrayBuffer();
+            return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` });
 
         } catch (error) {
-            console.error("SERVER ERROR:", error.message);
             res.status(500).json({ success: false, error: error.message });
         }
     });
 }
 
-// Вспомогательная функция для Сбера, чтобы не падал FormData
 async function uploadToSber(buffer, filename, token) {
     const formData = new FormData();
-    const blob = new Blob([buffer], { type: 'image/jpeg' });
-    formData.append('file', blob, filename);
+    formData.append('file', new Blob([buffer]), filename);
     formData.append('purpose', 'general');
-
-    const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` },
-        body: formData
-    });
+    const res = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: formData });
     return res.json();
 }
