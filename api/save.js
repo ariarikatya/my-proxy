@@ -68,7 +68,7 @@ export default async function handler(req, res) {
                 });
                 const { access_token } = await authRes.json();
 
-                // Загрузка
+                // Загружаем исходник
                 const sberForm = new FormData();
                 sberForm.append('file', new Blob([fileData]), 'image.jpg');
                 sberForm.append('purpose', 'general');
@@ -80,22 +80,28 @@ export default async function handler(req, res) {
                 });
                 const upData = await upRes.json();
 
-                // Генерация (используем твой старый системный промпт)
+                // ЗАПРОС НА ГЕНЕРАЦИЮ (Добавили function_call)
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'Authorization': `Bearer ${access_token}` 
+                    },
                     body: JSON.stringify({
                         model: "GigaChat",
                         messages: [
                             {
                                 role: "system",
-                                content: "Ты — профессиональный ландшафтный дизайнер. Ты умеешь аккуратно вписывать новые элементы в готовые фотографии, сохраняя исходное расположение дома и забора."
+                                content: "Ты — ландшафтный дизайнер. Ты генерируешь изображения с помощью функции text2image."
                             },
                             { 
                                 role: "user", 
-                                content: `Отредактируй это фото участка. Добавь элементы: ${modules}. Стиль: реалистичное фото. <img src="${upData.id}">` 
+                                // Просим максимально прямо, как в примере с розовым котом
+                                content: `Нарисуй ландшафтный дизайн участка: ${modules}. Используй это фото как основу: <img src="${upData.id}">` 
                             }
-                        ]
+                        ],
+                        // ВОТ ОНО — ТО САМОЕ ИЗ ДОКУМЕНТАЦИИ:
+                        function_call: "auto" 
                     })
                 });
                 
@@ -108,8 +114,7 @@ export default async function handler(req, res) {
                     let attempts = 0;
                     let fileRes;
                     
-                    // Цикл ожидания, чтобы не было ошибки 404
-                    while (attempts < 12) {
+                    while (attempts < 10) {
                         await new Promise(r => setTimeout(r, 2500));
                         fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultId}/content`, {
                             headers: { 'Authorization': `Bearer ${access_token}` }
@@ -118,7 +123,7 @@ export default async function handler(req, res) {
                         attempts++;
                     }
 
-                    if (!fileRes || !fileRes.ok) throw new Error("Сбер не подготовил файл вовремя.");
+                    if (!fileRes || !fileRes.ok) throw new Error("Сбер не отдал файл.");
                     
                     const buffer = await fileRes.arrayBuffer();
                     res.status(200).json({ 
@@ -126,7 +131,8 @@ export default async function handler(req, res) {
                         imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` 
                     });
                 } else {
-                    throw new Error("Сбер прислал текст вместо фото: " + content.substring(0, 100));
+                    // Если всё равно прислал текст — выводим его для отладки
+                    throw new Error("Сбер опять закапризничал: " + content.substring(0, 100));
                 }
 
             } catch (e) {
