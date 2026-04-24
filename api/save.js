@@ -5,9 +5,9 @@ import { Buffer } from 'buffer';
 export const config = { api: { bodyParser: false } };
 
 // --- ТВОИ КЛЮЧИ (Впиши их сюда!) ---
-const POLLEN_API_KEY = 'ТВОЙ_КЛЮЧ_POLLINATIONS';
-const YANDEX_API_KEY = 'ТВОЙ_API_KEY_ЯНДЕКС';
-const YANDEX_FOLDER_ID = 'ТВОЙ_FOLDER_ID'; 
+const POLLEN_API_KEY = 'sk_eLnt9yXSpvo2QeXy9PJreRZnHoOKazUF';
+const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
+const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
 const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 
