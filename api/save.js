@@ -76,10 +76,14 @@ export default async function handler(req, res) {
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
                     body: JSON.stringify({
                         model: "GigaChat",
-                        messages: [{ role: "user", content: `<img src="${upData.id}"> Нарисуй ландшафтный дизайн: ${modules}. Верни только img.` }]
+                        // Промт: просим ТОЛЬКО картинку
+                        messages: [{ role: "user", content: `<img src="${upData.id}"> Нарисуй ландшафтный дизайн участка: ${modules}. В ответе пришли ТОЛЬКО тег img и ничего больше.` }]
                     })
                 });
                 const genData = await genRes.json();
+                
+                if (!genData.choices) throw new Error("GigaChat пустой ответ: " + JSON.stringify(genData));
+                
                 const content = genData.choices[0].message.content;
                 const imgMatch = content.match(/<img src="([^"]+)"/);
 
@@ -88,7 +92,6 @@ export default async function handler(req, res) {
                     let attempts = 0;
                     let fileRes;
                     
-                    // Улучшенный опрос Сбера: пробуем 5 раз каждые 2 секунды
                     while (attempts < 5) {
                         await new Promise(r => setTimeout(r, 2500));
                         fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultId}/content`, {
@@ -98,12 +101,14 @@ export default async function handler(req, res) {
                         attempts++;
                     }
 
-                    if (!fileRes.ok) throw new Error("Сбер слишком долго думает. Попробуйте еще раз.");
+                    if (!fileRes.ok) throw new Error("Сбер долго думает (attempts exceeded).");
                     
                     const buffer = await fileRes.arrayBuffer();
                     return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` });
                 }
-                throw new Error("Сбер не вернул картинку.");
+                
+                // ВАЖНО: Если img тега нет, мы выбрасываем ошибку с текстом от Сбера
+                throw new Error("Сбер прислал текст вместо фото: " + content.substring(0, 50));
 
             } catch (e) {
                 res.status(200).json({ success: false, error: e.message });
