@@ -7,47 +7,41 @@ export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
+
+    // Обработка GET запроса для Яндекса (теперь всё в одном файле)
+    if (req.method === 'GET' && req.query.yandexId) {
+        try {
+            const yandCheck = await fetch(`https://llm.api.cloud.yandex.net/operations/${req.query.yandexId}`, {
+                headers: { "Authorization": `Api-Key AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK` }
+            });
+            const yandData = await yandCheck.json();
+            return res.status(200).json(yandData);
+        } catch (e) {
+            return res.status(200).json({ error: e.message });
+        }
+    }
 
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
             try {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
                 const engine = Array.isArray(fields.engine) ? fields.engine[0] : fields.engine;
                 const modules = Array.isArray(fields.modules) ? fields.modules.join(', ') : fields.modules;
 
-                // --- ПОЛИНА ---
-                if (engine === 'pollen') {
-                    const response = await fetch("https://api.pollinations.ai/v1/images/generate", {
-                        method: "POST",
-                        headers: { 
-                            "Authorization": `Bearer sk_eLnt9yXSpvo2QeXy9PJreRZnHoOKazUF`, 
-                            "Content-Type": "application/json" 
-                        },
-                        body: JSON.stringify({
-                            model: "klein", // Попробуй сменить на 'pollen' или 'flux', если 'klein' не пускает
-                            prompt: `Professional landscape design, garden, high resolution, ${modules}`,
-                            image: `data:image/jpeg;base64,${fileData.toString('base64')}`,
-                            image_strength: 0.4
-                        })
-                    });
-                    const data = await response.json();
-                    if (data.error) throw new Error("Pollinations API: " + (data.error.message || data.error));
-                    return res.status(200).json({ success: true, imageUrl: data.images[0].url });
-                }
-
-                // --- ЯНДЕКС ---
+                // --- ЯНДЕКС (Запуск) ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
                         headers: { "Authorization": `Api-Key AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK`, "x-folder-id": "b1ge0eghvcu1vefb33qi" },
                         body: JSON.stringify({
                             modelUri: `art://b1ge0eghvcu1vefb33qi/yandex-art/latest`,
-                            messages: [{ weight: 1, text: `Ландшафтный дизайн, сад, фотореализм, ${modules}` }]
+                            messages: [{ weight: 1, text: `Landscape design, photorealistic, ${modules}` }]
                         })
                     });
                     const op = await yandRes.json();
@@ -67,7 +61,7 @@ export default async function handler(req, res) {
                 const { access_token } = await authRes.json();
 
                 const sberForm = new FormData();
-                sberForm.append('file', new Blob([fileData]), 'image.jpg');
+                sberForm.append('file', new Blob([fileData]), 'img.jpg');
                 sberForm.append('purpose', 'general');
 
                 const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
@@ -75,34 +69,41 @@ export default async function handler(req, res) {
                     headers: { 'Authorization': `Bearer ${access_token}` },
                     body: sberForm
                 });
-                const { id: fileId } = await upRes.json();
+                const upData = await upRes.json();
 
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
                     body: JSON.stringify({
                         model: "GigaChat",
-                        messages: [{ role: "user", content: `<img src="${fileId}"> Нарисуй ландшафтный дизайн участка: ${modules}. Верни только тег img.` }]
+                        messages: [{ role: "user", content: `<img src="${upData.id}"> Нарисуй ландшафтный дизайн: ${modules}. Верни только img.` }]
                     })
                 });
                 const genData = await genRes.json();
-                const imgMatch = (genData.choices[0].message.content).match(/<img src="([^"]+)"/);
+                const content = genData.choices[0].message.content;
+                const imgMatch = content.match(/<img src="([^"]+)"/);
 
                 if (imgMatch) {
                     const resultId = imgMatch[1];
-                    // Ждем 2 секунды, чтобы Сбер успел "проявить" фото
-                    await new Promise(r => setTimeout(r, 2000));
+                    let attempts = 0;
+                    let fileRes;
                     
-                    const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultId}/content`, {
-                        headers: { 'Authorization': `Bearer ${access_token}` }
-                    });
-                    
-                    if (fileRes.status === 404) throw new Error("Сбер еще не подготовил файл. Попробуйте нажать кнопку еще раз через пару секунд.");
+                    // Улучшенный опрос Сбера: пробуем 5 раз каждые 2 секунды
+                    while (attempts < 5) {
+                        await new Promise(r => setTimeout(r, 2500));
+                        fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${resultId}/content`, {
+                            headers: { 'Authorization': `Bearer ${access_token}` }
+                        });
+                        if (fileRes.ok) break;
+                        attempts++;
+                    }
+
+                    if (!fileRes.ok) throw new Error("Сбер слишком долго думает. Попробуйте еще раз.");
                     
                     const buffer = await fileRes.arrayBuffer();
                     return res.status(200).json({ success: true, imageUrl: `data:image/jpeg;base64,${Buffer.from(buffer).toString('base64')}` });
                 }
-                throw new Error("Сбер не сгенерировал картинку.");
+                throw new Error("Сбер не вернул картинку.");
 
             } catch (e) {
                 res.status(200).json({ success: false, error: e.message });
