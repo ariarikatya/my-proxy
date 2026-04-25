@@ -43,7 +43,11 @@ export default async function handler(req, res) {
                 // --- ЯНДЕКС (Улучшенный промпт) ---
                 if (engine === 'yandex') {
                     // Формируем строгий промпт для Яндекса
-                    const yandPrompt = `Реалистичное фото ландшафтного дизайна, строго сохраняя положение дома, строений и забора из оригинального фото. На свободных местах добавить: ${rawModules}. Фотореализм, 8k, профессиональный дизайн сада.`;
+                    const yandPrompt = `Используй это фото как строгий шаблон. 
+ЗАПРЕЩЕНО менять положение дома, окон, дверей и забора. 
+РАКУРС КАМЕРЫ: Оставить без изменений. 
+ЗАДАЧА: На свободную землю на фото наложить ландшафтный дизайн: ${rawModules}. 
+Стиль: фотореализм, как настоящая фотография.`;
                     
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -84,8 +88,7 @@ export default async function handler(req, res) {
                 const upData = await upRes.json();
 
                 // Формируем промпт для Сбера (максимально просто, чтобы не упал)
-                const sberPrompt = `Нарисуй ландшафтный дизайн. Тот же ракурс и те же здания, что на фото. Добавь на участок: ${rawModules}. Фотореалистично, дневной свет. Используй фото как основу: <img src="${upData.id}">`;
-
+                const sberPrompt = `Инструкция: Возьми прикрепленное фото. Оставь дом и постройки в точности как есть. Не меняй их форму и место. Добавь на пустые места участка: ${rawModules}. Результат должен выглядеть как реальное фото. <img src="${upData.id}">`;
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
                     method: 'POST',
                     headers: { 
