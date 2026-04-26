@@ -86,16 +86,26 @@ export default async function handler(req, res) {
                 const upData = await upRes.json();
 
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
-                    body: JSON.stringify({
-                        model: "GigaChat",
-                        messages: [
-                            { role: "system", content: "Ты ландшафтный дизайнер. Сохраняй архитектуру дома без изменений." },
-                            { role: "user", content: `${finalPrompt} <img src="${upData.id}">` } // Сюда подставляем finalPrompt
-                        ]
-                    })
-                });
+    method: 'POST',
+    headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${access_token}` 
+    },
+    body: JSON.stringify({
+        model: "GigaChat",
+        messages: [
+            { 
+                role: "system", 
+                content: "Ты — генератор изображений. Твоя задача — рисовать ландшафтный дизайн. Не пиши текст, только генерируй картинку." 
+            },
+            { 
+                role: "user", 
+                content: `Нарисуй: ${finalPrompt} <img src="${upData.id}">` // Добавил слово "Нарисуй" для верности
+            }
+        ],
+        function_call: "auto" // ВОТ ЭТОТ ПАРАМЕТР ОБЯЗАТЕЛЕН!
+    })
+});
                 
                 const genData = await genRes.json();
                 const content = genData.choices?.[0]?.message?.content || "";
