@@ -32,88 +32,70 @@ export default async function handler(req, res) {
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
-            try {
-                const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                if (!file) throw new Error("Файл не найден");
-                const fileData = fs.readFileSync(file.filepath);
+            try {
+                const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                if (!file) throw new Error("Файл не найден");
+                const fileData = fs.readFileSync(file.filepath);
 
-                const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
-                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "красивый сад");
+                // --- 1. СОБИРАЕМ ДАННЫЕ ИЗ ПОЛЕЙ ---
+                const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
+                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "");
+                const customRequest = Array.isArray(fields.customRequest) ? fields.customRequest[0] : (fields.customRequest || "");
 
-                // --- ЯНДЕКС (Улучшенный промпт) ---
-                if (engine === 'yandex') {
-                    // Формируем строгий промпт для Яндекса
-                    const yandPrompt = `ЗАДАЧА: Ландшафтный дизайн. 
-ИСХОДНИК: Используй фото как жесткий каркас. 
-ЗАПРЕТ: Не перемещай объекты которые уже есть на фото. Не меняй угол обзора.
-ДЕЙСТВИЕ: На свободные участки земли добавь: ${rawModules}. 
-РЕЗУЛЬТАТ: Фотореализм.`;
-                    
-                    const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
-                        method: "POST",
-                        headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
-                        body: JSON.stringify({
-                            modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
-                            messages: [{ weight: 1, text: yandPrompt }]
-                        })
-                    });
-                    const op = await yandRes.json();
-                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
-                    return resolve();
-                }
+                // --- 2. ФОРМИРУЕМ ЕДИНЫЙ ПРОМПТ (БЕРЕЖЕМ АРХИТЕКТУРУ) ---
+                const fullUserWish = `${rawModules}. Дополнительно: ${customRequest}`;
+                const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. 
+ИСХОДНИК: Используй фото как ЖЕСТКИЙ КАРКАС. 
+ЗАПРЕТ: Категорически запрещено менять дом, забор, окна и архитектуру. Не меняй ракурс.
+ДЕЙСТВИЕ: На свободные участки земли добавь: ${fullUserWish}. 
+РЕЗУЛЬТАТ: Фотореализм, высокое разрешение.`;
 
-                // --- СБЕР (Улучшенный промпт и логика) ---
-                const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
-                const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
-                    method: 'POST',
-                    headers: { 
-                        'Authorization': `Basic ${authKey}`, 
-                        'Content-Type': 'application/x-www-form-urlencoded', 
-                        'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807' 
-                    },
-                    body: 'scope=GIGACHAT_API_PERS'
-                });
-                const { access_token } = await authRes.json();
+                // --- 3. ЛОГИКА ЯНДЕКСА ---
+                if (engine === 'yandex') {
+                    const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
+                        method: "POST",
+                        headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
+                        body: JSON.stringify({
+                            modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
+                            messages: [{ weight: 1, text: finalPrompt }] // Используем finalPrompt
+                        })
+                    });
+                    const op = await yandRes.json();
+                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
+                    return resolve();
+                }
 
-                // Загружаем исходник в Сбер
-                const sberForm = new FormData();
-                sberForm.append('file', new Blob([fileData]), 'image.jpg');
-                sberForm.append('purpose', 'general');
+                // --- 4. ЛОГИКА СБЕРА ---
+                const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
+                const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Basic ${authKey}`, 'Content-Type': 'application/x-www-form-urlencoded', 'RqUID': '6f0b1291-c7f1-43c2-83b2-e4642744c807' },
+                    body: 'scope=GIGACHAT_API_PERS'
+                });
+                const { access_token } = await authRes.json();
 
-                const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${access_token}` },
-                    body: sberForm
-                });
-                const upData = await upRes.json();
+                const sberForm = new FormData();
+                sberForm.append('file', new Blob([fileData]), 'image.jpg');
+                sberForm.append('purpose', 'general');
 
-                // Формируем промпт для Сбера (максимально просто, чтобы не упал)
-                const sberPrompt = `ЗАДАЧА: Ландшафтный дизайн. 
-ИСХОДНИК: Используй фото как жесткий каркас. 
-ЗАПРЕТ: Не перемещай объекты которые уже есть на фото. Не меняй угол обзора.
-ДЕЙСТВИЕ: На свободные участки земли добавь: ${rawModules}. 
-РЕЗУЛЬТАТ: Фотореализм. <img src="${upData.id}">`;
-                const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json', 
-                        'Authorization': `Bearer ${access_token}` 
-                    },
-                    body: JSON.stringify({
-                        model: "GigaChat",
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Ты ландшафтный дизайнер. Ты создаешь реалистичные проекты, сохраняя архитектуру клиента."
-                            },
-                            { 
-                                role: "user", 
-                                content: sberPrompt
-                            }
-                        ],
-                        function_call: "auto" 
-                    })
-                });
+                const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${access_token}` },
+                    body: sberForm
+                });
+                const upData = await upRes.json();
+
+                const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
+                    body: JSON.stringify({
+                        model: "GigaChat",
+                        messages: [
+                            { role: "system", content: "Ты ландшафтный дизайнер. Сохраняй архитектуру дома без изменений." },
+                            { role: "user", content: `${finalPrompt} <img src="${upData.id}">` } // Сюда подставляем finalPrompt
+                        ]
+                    })
+                });
                 
                 const genData = await genRes.json();
                 const content = genData.choices?.[0]?.message?.content || "";
