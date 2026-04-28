@@ -36,19 +36,22 @@ export default async function handler(req, res) {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
-
-                // --- 1. СОБИРАЕМ ДАННЫЕ ИЗ ПОЛЕЙ ---
-                const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
-                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "");
+                // --- 1. СОБИРАЕМ ДАННЫЕ ИЗ ПОЛЕЙ ---
+                const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
+                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "");
                 const customRequest = Array.isArray(fields.customRequest) ? fields.customRequest[0] : (fields.customRequest || "");
+                
+                // Добавляем сбор стиля (если ты передаешь его отдельным полем в FormData)
+                const style = Array.isArray(fields.style) ? fields.style[0] : (fields.style || "природный");
 
-                // --- 2. ФОРМИРУЕМ ЕДИНЫЙ ПРОМПТ (БЕРЕЖЕМ АРХИТЕКТУРУ) ---
-                const fullUserWish = `${rawModules}. Дополнительно: ${customRequest}`;
+                // --- 2. ФОРМИРУЕМ ЕДИНЫЙ ПРОМПТ ---
+                // Добавляем СТИЛЬ прямо в начало задачи
                 const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. 
+СТИЛЬ: ${style}. 
 ИСХОДНИК: Используй фото как ЖЕСТКИЙ КАРКАС. 
-ЗАПРЕТ: Категорически запрещено менять дом, забор, окна и архитектуру. Не меняй ракурс.
-ДЕЙСТВИЕ: На свободные участки земли добавь: ${fullUserWish}. 
-РЕЗУЛЬТАТ: Фотореализм, высокое разрешение.`;
+ЗАПРЕТ: Категорически запрещено менять дом, забор, окна и архитектуру. 
+ДЕЙСТВИЕ: На свободные участки земли добавь: ${rawModules}. ${customRequest}
+РЕЗУЛЬТАТ: Фотореализм, 8k, профессиональный дизайн.`;
 
                 // --- 3. ЛОГИКА ЯНДЕКСА ---
                 if (engine === 'yandex') {
@@ -86,26 +89,27 @@ export default async function handler(req, res) {
                 const upData = await upRes.json();
 
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${access_token}` 
-    },
-    body: JSON.stringify({
-        model: "GigaChat",
-        messages: [
-            { 
-                role: "system", 
-                content: "Ты — генератор изображений. Твоя задача — рисовать ландшафтный дизайн. Не пиши текст, только генерируй картинку." 
-            },
-            { 
-                role: "user", 
-                content: `Нарисуй: ${finalPrompt} <img src="${upData.id}">` // Добавил слово "Нарисуй" для верности
-            }
-        ],
-        function_call: "auto" // ВОТ ЭТОТ ПАРАМЕТР ОБЯЗАТЕЛЕН!
-    })
-});
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'Authorization': `Bearer ${access_token}` 
+                    },
+                    body: JSON.stringify({
+                        model: "GigaChat",
+                        messages: [
+                            { 
+                                role: "system", 
+                                // Сделали инструкцию максимально короткой и грубой — нейросети так лучше понимают
+                                content: "Ты — бот-художник. Генерируй изображение по запросу. ПИСАТЬ ТЕКСТ ЗАПРЕЩЕНО. СРАЗУ РИСУЙ." 
+                            },
+                            { 
+                                role: "user", 
+                                content: `Нарисуй ландшафтный дизайн: ${finalPrompt} <img src="${upData.id}">` 
+                            }
+                        ],
+                        function_call: "auto" 
+                    })
+                });
                 
                 const genData = await genRes.json();
                 const content = genData.choices?.[0]?.message?.content || "";
