@@ -31,7 +31,6 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ОПРОС ГОТОВНОСТИ (GET) ---
     if (req.method === 'GET') {
         const { yandexId, sberId, prompt } = req.query;
         try {
@@ -46,7 +45,6 @@ export default async function handler(req, res) {
 
             if (sberId) {
                 const token = await getSberToken();
-                // Запрос на генерацию по доке Сбера
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
                     method: 'POST',
                     headers: { 
@@ -63,39 +61,42 @@ export default async function handler(req, res) {
                         function_call: "auto"
                     })
                 });
-
                 const genData = await genRes.json();
                 const content = genData.choices?.[0]?.message?.content || "";
                 const imgMatch = content.match(/<img src="([^"]+)"/);
 
                 if (imgMatch) {
-                    // Если получили ID картинки — скачиваем её (GET /files/{id}/content)
                     const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${imgMatch[1]}/content`, {
                         headers: { 'Authorization': `Bearer ${token}` }
                     });
                     const buffer = await fileRes.arrayBuffer();
                     return res.status(200).json({ done: true, image: Buffer.from(buffer).toString('base64') });
                 }
-                // Если картинки нет в ответе, значит Сбер еще думает или ошибся
                 return res.status(200).json({ done: false });
             }
         } catch (e) { 
-            // В случае таймаута просто отвечаем false, чтобы фронтенд повторил попытку
-            return res.status(200).json({ done: false, retry: true }); 
+            return res.status(200).json({ done: false, retry: true, error: e.message }); 
         }
     }
 
-    // --- ЗАГРУЗКА ИСХОДНИКА (POST) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
             try {
+                // Хелпер для корректного чтения полей
+                const getVal = (val) => Array.isArray(val) ? val[0] : val;
+
+                const engine = getVal(fields.engine) || "sber";
+                const style = getVal(fields.style) || "природный";
+                const custom = getVal(fields.customRequest) || "";
+                const modules = getVal(fields.modules) || "";
+
+                // ФОРМИРУЕМ ПОЛНЫЙ ПРОМПТ
+                const finalPrompt = `Ландшафтный дизайн, стиль: ${style}. Включить: ${modules}. Дополнительно: ${custom}. Фотореализм.`;
+
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 const fileData = fs.readFileSync(file.filepath);
-                const engine = fields.engine || "sber";
-                const style = fields.style || "природный";
-                const custom = fields.customRequest || "";
-                const finalPrompt = `Стиль: ${style}. ${custom}. Фотореализм.`;
+                const base64Image = fileData.toString('base64');
 
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
@@ -105,12 +106,12 @@ export default async function handler(req, res) {
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
                             messages: [
                                 { weight: 1, text: finalPrompt },
-                                { weight: 0.85, image: fileData.toString('base64') }
+                                { weight: 0.85, image: base64Image }
                             ]
                         })
                     });
                     const op = await yandRes.json();
-                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
+                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
                 } else {
                     const token = await getSberToken();
                     const sberFormData = new FormData();
@@ -123,7 +124,6 @@ export default async function handler(req, res) {
                         body: sberFormData
                     });
                     const upData = await upRes.json();
-                    // Возвращаем ID загруженного файла
                     res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
             } catch (e) { res.status(200).json({ success: false, error: e.message }); }
