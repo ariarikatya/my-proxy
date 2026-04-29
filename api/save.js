@@ -3,7 +3,12 @@ import fs from 'fs';
 import { Buffer } from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-export const config = { api: { bodyParser: false } };
+
+export const config = {
+    api: {
+        bodyParser: false,
+    },
+};
 
 const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
@@ -11,7 +16,7 @@ const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 
 export default async function handler(req, res) {
-    // Принудительные заголовки в самом начале
+    // 1. Настройка CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -33,6 +38,7 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
+    // --- ЛОГИКА GET (Опрос статуса) ---
     if (req.method === 'GET') {
         const { yandexId, sberId } = req.query;
         try {
@@ -58,11 +64,14 @@ export default async function handler(req, res) {
         }
     }
 
-    // POST Logic
+    // --- ЛОГИКА POST (Запуск генерации) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
-            if (err) return res.status(500).json({ error: "Form parse error" });
+            if (err) {
+                res.status(500).json({ error: "Form parse error" });
+                return resolve();
+            }
 
             try {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
@@ -76,6 +85,7 @@ export default async function handler(req, res) {
 
                 const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. СТИЛЬ: ${style}. СОХРАНИ АРХИТЕКТУРУ. ИЗМЕНИ ЗЕМЛЮ: ${rawModules}. ${customRequest}. Фотореализм.`;
 
+                // --- КАНАЛ YANDEX ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -93,7 +103,7 @@ export default async function handler(req, res) {
                     return resolve();
                 }
 
-                // SBER
+                // --- КАНАЛ SBER ---
                 const access_token = await getSberToken();
                 const sberFormData = new FormData();
                 sberFormData.append('file', new Blob([fileData]), 'image.jpg');
@@ -106,47 +116,41 @@ export default async function handler(req, res) {
                 });
                 const upData = await upRes.json();
 
+                // Ограничиваем ожидание GigaChat до 8 секунд, чтобы Vercel не упал сам
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), 8000);
+
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-    method: 'POST',
-    headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${access_token}`,
-        'Accept': 'application/json'
-    },
-    body: JSON.stringify({
-        model: "GigaChat", // Можно попробовать "GigaChat-Max", если доступен, он послушнее
-        messages: [
-            { 
-                role: "system", 
-                content: "Ты — бот-генератор изображений Kandinsky. Твоя единственная задача — генерировать картинки по запросу пользователя. Никогда не отвечай текстом. Только генерация." 
-            },
-            { 
-                role: "user", 
-                content: `Нарисуй: ${finalPrompt}. Используй это фото как основу: <img src="${upData.id}">` 
-            }
-        ],
-        function_call: "auto",
-        update_interval: 0 // Чтобы не слал промежуточные статусы
-    })
-});
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'Authorization': `Bearer ${access_token}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "GigaChat",
+                        messages: [
+                            { role: "system", content: "Ты бот Kandinsky. СРАЗУ ГЕНЕРИРУЙ КАРТИНКУ. Текст писать запрещено." },
+                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${finalPrompt} <img src="${upData.id}">` }
+                        ],
+                        function_call: "auto"
+                    }),
+                    signal: controller.signal
+                });
 
-const genData = await genRes.json();
+                clearTimeout(id);
+                const genData = await genRes.json();
+                const content = genData.choices?.[0]?.message?.content || "";
+                const imgMatch = content.match(/<img src="([^"]+)"/);
 
-// Важный фикс: проверяем не только регуляркой, но и смотрим finish_reason
-const messageContent = genData.choices?.[0]?.message?.content || "";
-const imgMatch = messageContent.match(/<img src="([^"]+)"/);
-
-if (imgMatch) {
-    res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
-} else {
-    // Если он прислал текст, мы выведем его начало в ошибку для диагностики
-    res.status(200).json({ 
-        success: false, 
-        error: "Сбер заупрямился и прислал текст вместо фото. Попробуйте еще раз."
-    });
-}
+                if (imgMatch) {
+                    res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
+                } else {
+                    res.status(200).json({ success: false, error: "Сбер вернул текст вместо фото. Попробуйте еще раз." });
+                }
             } catch (e) {
-                res.status(200).json({ success: false, error: e.message });
+                // Если отвалились по таймауту или ошибке
+                res.status(200).json({ success: false, error: "Ошибка соединения или таймаут. Попробуйте файл поменьше." });
             }
             resolve();
         });
