@@ -105,7 +105,7 @@ export default async function handler(req, res) {
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
                             messages: [
                                 { weight: 1, text: finalPrompt },
-                                { weight: 0.7, image: fileData.toString('base64') }
+                                { weight: 0.85, image: fileData.toString('base64') }
                             ]
                         })
                     });
