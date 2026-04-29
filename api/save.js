@@ -107,25 +107,41 @@ export default async function handler(req, res) {
                 const upData = await upRes.json();
 
                 const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${access_token}` },
-                    body: JSON.stringify({
-                        model: "GigaChat",
-                        messages: [
-                            { role: "system", content: "Ты — бот-художник. СРАЗУ РИСУЙ." },
-                            { role: "user", content: `${finalPrompt} <img src="${upData.id}">` }
-                        ]
-                    })
-                });
-                
-                const genData = await genRes.json();
-                const imgMatch = (genData.choices?.[0]?.message?.content || "").match(/<img src="([^"]+)"/);
+    method: 'POST',
+    headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${access_token}`,
+        'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+        model: "GigaChat",
+        messages: [
+            { 
+                role: "system", 
+                content: "Ты — профессиональный ландшафтный дизайнер и художник. ПИСАТЬ ТЕКСТ ЗАПРЕЩЕНО. СРАЗУ ГЕНЕРИРУЙ ИЗОБРАЖЕНИЕ." 
+            },
+            { 
+                role: "user", 
+                content: `Нарисуй ландшафтный дизайн на основе этого фото, сохранив постройки: ${finalPrompt} <img src="${upData.id}">` 
+            }
+        ],
+        function_call: "auto" // КРИТИЧЕСКИ ВАЖНО ДЛЯ КАНДИНСКОГО
+    })
+});
 
-                if (imgMatch) {
-                    res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
-                } else {
-                    res.status(200).json({ success: false, error: "Сбер не вернул ID картинки" });
-                }
+const genData = await genRes.json();
+console.log("GigaChat response:", JSON.stringify(genData)); // Для отладки в логах Vercel
+
+const content = genData.choices?.[0]?.message?.content || "";
+const imgMatch = content.match(/<img src="([^"]+)"/);
+
+if (imgMatch) {
+    // Возвращаем UUID фронтенду, он его подхватит в polling-запросе GET
+    res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
+} else {
+    // Если Сбер вернул текст вместо картинки, выводим этот текст для понимания ошибки
+    res.status(200).json({ success: false, error: "Сбер вернул текст вместо картинки: " + content });
+}
             } catch (e) {
                 res.status(200).json({ success: false, error: e.message });
             }
