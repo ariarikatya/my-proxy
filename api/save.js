@@ -3,12 +3,7 @@ import fs from 'fs';
 import { Buffer } from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
-export const config = {
-    api: {
-        bodyParser: false,
-    },
-};
+export const config = { api: { bodyParser: false } };
 
 const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
@@ -16,11 +11,9 @@ const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 
 export default async function handler(req, res) {
-    // 1. Настройка CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const getSberToken = async () => {
@@ -38,54 +31,72 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ЛОГИКА GET (Опрос статуса) ---
+    // --- ОПРОС ГОТОВНОСТИ (GET) ---
     if (req.method === 'GET') {
-        const { yandexId, sberId } = req.query;
+        const { yandexId, sberId, prompt } = req.query;
         try {
             if (yandexId) {
                 const yandCheck = await fetch(`https://llm.api.cloud.yandex.net/operations/${yandexId}`, {
                     headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}` }
                 });
-                return res.status(200).json(await yandCheck.json());
+                const data = await yandCheck.json();
+                if (data.done) return res.status(200).json({ done: true, image: data.response.image });
+                return res.status(200).json({ done: false });
             }
+
             if (sberId) {
                 const token = await getSberToken();
-                const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${sberId}/content`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                // Запрос на генерацию по доке Сбера
+                const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'Authorization': `Bearer ${token}`,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "GigaChat",
+                        messages: [
+                            { role: "system", content: "Ты — Василий Кандинский. Генерируй изображения по запросу. Текст в ответе запрещен." },
+                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${prompt}. Используй это фото как основу: <img src="${sberId}">` }
+                        ],
+                        function_call: "auto"
+                    })
                 });
-                if (fileRes.ok) {
+
+                const genData = await genRes.json();
+                const content = genData.choices?.[0]?.message?.content || "";
+                const imgMatch = content.match(/<img src="([^"]+)"/);
+
+                if (imgMatch) {
+                    // Если получили ID картинки — скачиваем её (GET /files/{id}/content)
+                    const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${imgMatch[1]}/content`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
                     const buffer = await fileRes.arrayBuffer();
                     return res.status(200).json({ done: true, image: Buffer.from(buffer).toString('base64') });
                 }
+                // Если картинки нет в ответе, значит Сбер еще думает или ошибся
                 return res.status(200).json({ done: false });
             }
-        } catch (e) {
-            return res.status(500).json({ error: e.message });
+        } catch (e) { 
+            // В случае таймаута просто отвечаем false, чтобы фронтенд повторил попытку
+            return res.status(200).json({ done: false, retry: true }); 
         }
     }
 
-    // --- ЛОГИКА POST (Запуск генерации) ---
+    // --- ЗАГРУЗКА ИСХОДНИКА (POST) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
-            if (err) {
-                res.status(500).json({ error: "Form parse error" });
-                return resolve();
-            }
-
             try {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
+                const engine = fields.engine || "sber";
+                const style = fields.style || "природный";
+                const custom = fields.customRequest || "";
+                const finalPrompt = `Стиль: ${style}. ${custom}. Фотореализм.`;
 
-                const engine = Array.isArray(fields.engine) ? fields.engine[0] : (fields.engine || "sber");
-                const rawModules = Array.isArray(fields.modules) ? fields.modules.join(", ") : (fields.modules || "");
-                const customRequest = Array.isArray(fields.customRequest) ? fields.customRequest[0] : (fields.customRequest || "");
-                const style = Array.isArray(fields.style) ? fields.style[0] : (fields.style || "природный");
-
-                const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. СТИЛЬ: ${style}. СОХРАНИ АРХИТЕКТУРУ. ИЗМЕНИ ЗЕМЛЮ: ${rawModules}. ${customRequest}. Фотореализм.`;
-
-                // --- КАНАЛ YANDEX ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -94,64 +105,28 @@ export default async function handler(req, res) {
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
                             messages: [
                                 { weight: 1, text: finalPrompt },
-                                { weight: 0.7, image: fileData.toString('base64') } 
+                                { weight: 0.7, image: fileData.toString('base64') }
                             ]
                         })
                     });
                     const op = await yandRes.json();
                     res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
-                    return resolve();
-                }
-
-                // --- КАНАЛ SBER ---
-                const access_token = await getSberToken();
-                const sberFormData = new FormData();
-                sberFormData.append('file', new Blob([fileData]), 'image.jpg');
-                sberFormData.append('purpose', 'general');
-
-                const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${access_token}` },
-                    body: sberFormData
-                });
-                const upData = await upRes.json();
-
-                // Ограничиваем ожидание GigaChat до 8 секунд, чтобы Vercel не упал сам
-                const controller = new AbortController();
-                const id = setTimeout(() => controller.abort(), 8000);
-
-                const genRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json', 
-                        'Authorization': `Bearer ${access_token}`,
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: "GigaChat",
-                        messages: [
-                            { role: "system", content: "Ты бот Kandinsky. СРАЗУ ГЕНЕРИРУЙ КАРТИНКУ. Текст писать запрещено." },
-                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${finalPrompt} <img src="${upData.id}">` }
-                        ],
-                        function_call: "auto"
-                    }),
-                    signal: controller.signal
-                });
-
-                clearTimeout(id);
-                const genData = await genRes.json();
-                const content = genData.choices?.[0]?.message?.content || "";
-                const imgMatch = content.match(/<img src="([^"]+)"/);
-
-                if (imgMatch) {
-                    res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
                 } else {
-                    res.status(200).json({ success: false, error: "Сбер вернул текст вместо фото. Попробуйте еще раз." });
+                    const token = await getSberToken();
+                    const sberFormData = new FormData();
+                    sberFormData.append('file', new Blob([fileData]), 'image.jpg');
+                    sberFormData.append('purpose', 'general');
+
+                    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: sberFormData
+                    });
+                    const upData = await upRes.json();
+                    // Возвращаем ID загруженного файла
+                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
-            } catch (e) {
-                // Если отвалились по таймауту или ошибке
-                res.status(200).json({ success: false, error: "Ошибка соединения или таймаут. Попробуйте файл поменьше." });
-            }
+            } catch (e) { res.status(200).json({ success: false, error: e.message }); }
             resolve();
         });
     });
