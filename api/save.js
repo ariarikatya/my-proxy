@@ -58,7 +58,7 @@ export default async function handler(req, res) {
                         model: "GigaChat",
                         messages: [
                             { role: "system", content: "Ты — Василий Кандинский. Генерируй изображения по запросу. Текст в ответе запрещен." },
-                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${prompt}. Используй это фото как основу: <img src="${sberId}">` }
+                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${prompt}. Используй фото как строгий шаблон, ВРИСУЙ новые элементы, но СОХРАНИ объекты с исходного фото 1-в-1: <img src="${sberId}">` }
                         ],
                         function_call: "auto"
                     })
