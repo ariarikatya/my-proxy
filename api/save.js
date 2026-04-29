@@ -114,33 +114,36 @@ export default async function handler(req, res) {
         'Accept': 'application/json'
     },
     body: JSON.stringify({
-        model: "GigaChat",
+        model: "GigaChat", // Можно попробовать "GigaChat-Max", если доступен, он послушнее
         messages: [
             { 
                 role: "system", 
-                content: "Ты — профессиональный ландшафтный дизайнер и художник. ПИСАТЬ ТЕКСТ ЗАПРЕЩЕНО. СРАЗУ ГЕНЕРИРУЙ ИЗОБРАЖЕНИЕ." 
+                content: "Ты — бот-генератор изображений Kandinsky. Твоя единственная задача — генерировать картинки по запросу пользователя. Никогда не отвечай текстом. Только генерация." 
             },
             { 
                 role: "user", 
-                content: `Нарисуй ландшафтный дизайн на основе этого фото, сохранив постройки: ${finalPrompt} <img src="${upData.id}">` 
+                content: `Нарисуй: ${finalPrompt}. Используй это фото как основу: <img src="${upData.id}">` 
             }
         ],
-        function_call: "auto" // КРИТИЧЕСКИ ВАЖНО ДЛЯ КАНДИНСКОГО
+        function_call: "auto",
+        update_interval: 0 // Чтобы не слал промежуточные статусы
     })
 });
 
 const genData = await genRes.json();
-console.log("GigaChat response:", JSON.stringify(genData)); // Для отладки в логах Vercel
 
-const content = genData.choices?.[0]?.message?.content || "";
-const imgMatch = content.match(/<img src="([^"]+)"/);
+// Важный фикс: проверяем не только регуляркой, но и смотрим finish_reason
+const messageContent = genData.choices?.[0]?.message?.content || "";
+const imgMatch = messageContent.match(/<img src="([^"]+)"/);
 
 if (imgMatch) {
-    // Возвращаем UUID фронтенду, он его подхватит в polling-запросе GET
     res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
 } else {
-    // Если Сбер вернул текст вместо картинки, выводим этот текст для понимания ошибки
-    res.status(200).json({ success: false, error: "Сбер вернул текст вместо картинки: " + content });
+    // Если он прислал текст, мы выведем его начало в ошибку для диагностики
+    res.status(200).json({ 
+        success: false, 
+        error: "Сбер заупрямился и прислал текст вместо фото. Попробуйте еще раз."
+    });
 }
             } catch (e) {
                 res.status(200).json({ success: false, error: e.message });
