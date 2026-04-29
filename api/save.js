@@ -11,12 +11,13 @@ const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
 
 export default async function handler(req, res) {
+    // Принудительные заголовки в самом начале
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    // --- ОБЩАЯ АВТОРИЗАЦИЯ СБЕРА (для GET и POST) ---
     const getSberToken = async () => {
         const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
         const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
@@ -32,44 +33,37 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ОБРАБОТКА GET (Проверка статуса) ---
     if (req.method === 'GET') {
         const { yandexId, sberId } = req.query;
-
         try {
             if (yandexId) {
                 const yandCheck = await fetch(`https://llm.api.cloud.yandex.net/operations/${yandexId}`, {
                     headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}` }
                 });
-                const yandData = await yandCheck.json();
-                return res.status(200).json(yandData);
+                return res.status(200).json(await yandCheck.json());
             }
-
             if (sberId) {
                 const token = await getSberToken();
                 const fileRes = await fetch(`https://gigachat.devices.sberbank.ru/api/v1/files/${sberId}/content`, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
                 if (fileRes.ok) {
                     const buffer = await fileRes.arrayBuffer();
-                    return res.status(200).json({ 
-                        done: true, 
-                        image: Buffer.from(buffer).toString('base64') 
-                    });
-                } else {
-                    return res.status(200).json({ done: false });
+                    return res.status(200).json({ done: true, image: Buffer.from(buffer).toString('base64') });
                 }
+                return res.status(200).json({ done: false });
             }
         } catch (e) {
-            return res.status(200).json({ error: e.message });
+            return res.status(500).json({ error: e.message });
         }
     }
 
-    // --- ОБРАБОТКА POST (Запуск генерации) ---
+    // POST Logic
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
+            if (err) return res.status(500).json({ error: "Form parse error" });
+
             try {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 if (!file) throw new Error("Файл не найден");
@@ -80,7 +74,7 @@ export default async function handler(req, res) {
                 const customRequest = Array.isArray(fields.customRequest) ? fields.customRequest[0] : (fields.customRequest || "");
                 const style = Array.isArray(fields.style) ? fields.style[0] : (fields.style || "природный");
 
-                const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. СТИЛЬ: ${style}. ИСХОДНОЕ ФОТО — ЭТО ЖЕСТКИЙ ПЛАН. СОХРАНИ БЕЗ ИЗМЕНЕНИЙ: все строения, здания, архитектуру. ИЗМЕНИ ТОЛЬКО ЗЕМЛЮ: добавь туда ${rawModules}. ${customRequest}. Результат: фотореализм.`;
+                const finalPrompt = `ЗАДАЧА: Ландшафтный дизайн. СТИЛЬ: ${style}. СОХРАНИ АРХИТЕКТУРУ. ИЗМЕНИ ЗЕМЛЮ: ${rawModules}. ${customRequest}. Фотореализм.`;
 
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
@@ -99,17 +93,16 @@ export default async function handler(req, res) {
                     return resolve();
                 }
 
-                // СБЕР (Kandinsky)
+                // SBER
                 const access_token = await getSberToken();
-
-                const sberForm = new FormData();
-                sberForm.append('file', new Blob([fileData]), 'image.jpg');
-                sberForm.append('purpose', 'general');
+                const sberFormData = new FormData();
+                sberFormData.append('file', new Blob([fileData]), 'image.jpg');
+                sberFormData.append('purpose', 'general');
 
                 const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${access_token}` },
-                    body: sberForm
+                    body: sberFormData
                 });
                 const upData = await upRes.json();
 
@@ -119,24 +112,20 @@ export default async function handler(req, res) {
                     body: JSON.stringify({
                         model: "GigaChat",
                         messages: [
-                            { role: "system", content: "Ты — бот-художник. ПИСАТЬ ТЕКСТ ЗАПРЕЩЕНО. СРАЗУ РИСУЙ." },
-                            { role: "user", content: `На основе этого фото сделай дизайн, сохранив все постройки: ${finalPrompt} <img src="${upData.id}">` }
-                        ],
-                        function_call: "auto"
+                            { role: "system", content: "Ты — бот-художник. СРАЗУ РИСУЙ." },
+                            { role: "user", content: `${finalPrompt} <img src="${upData.id}">` }
+                        ]
                     })
                 });
                 
                 const genData = await genRes.json();
-                const content = genData.choices?.[0]?.message?.content || "";
-                const imgMatch = content.match(/<img src="([^"]+)"/);
+                const imgMatch = (genData.choices?.[0]?.message?.content || "").match(/<img src="([^"]+)"/);
 
                 if (imgMatch) {
-                    // Просто отдаем ID картинки фронтенду
                     res.status(200).json({ success: true, provider: 'sber', operationId: imgMatch[1] });
                 } else {
-                    throw new Error("Сбер не принял запрос на генерацию.");
+                    res.status(200).json({ success: false, error: "Сбер не вернул ID картинки" });
                 }
-
             } catch (e) {
                 res.status(200).json({ success: false, error: e.message });
             }
