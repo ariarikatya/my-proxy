@@ -9,6 +9,7 @@ const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
 const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
+const TENSOR_API_KEY = 'ak_tensor_noPYu9xL_u9UHxMk9kgU1Ilf7aZ2AIQFJ25NhjkLaOk'; // Замени на свой!
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -32,7 +33,7 @@ export default async function handler(req, res) {
     };
 
     if (req.method === 'GET') {
-        const { yandexId, sberId, prompt } = req.query;
+        const { yandexId, sberId, tensorId, prompt } = req.query;
         try {
             if (yandexId) {
                 const yandCheck = await fetch(`https://llm.api.cloud.yandex.net/operations/${yandexId}`, {
@@ -40,6 +41,20 @@ export default async function handler(req, res) {
                 });
                 const data = await yandCheck.json();
                 if (data.done) return res.status(200).json({ done: true, image: data.response.image });
+                return res.status(200).json({ done: false });
+            }
+
+            if (tensorId) {
+                const tensorCheck = await fetch(`https://api.tensor.art/v1/jobs/${tensorId}`, {
+                    headers: { "Authorization": `Bearer ${TENSOR_API_KEY}` }
+                });
+                const data = await tensorCheck.json();
+                if (data.job.status === 'SUCCESS') {
+                    // Tensor отдает ссылку, скачиваем и переводим в base64
+                    const imgRes = await fetch(data.job.success_output[0].url);
+                    const buffer = await imgRes.arrayBuffer();
+                    return res.status(200).json({ done: true, image: Buffer.from(buffer).toString('base64') });
+                }
                 return res.status(200).json({ done: false });
             }
 
@@ -55,10 +70,9 @@ export default async function handler(req, res) {
                     body: JSON.stringify({
                         model: "GigaChat",
                         messages: [
-                            { role: "system", content: "Ты — Василий Кандинский. Генерируй изображения по запросу. Текст в ответе запрещен." },
-                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${prompt}. Используй фото как строгий шаблон, ВРИСУЙ новые элементы, но СОХРАНИ объекты с исходного фото 1-в-1: <img src="${sberId}">` }
-                        ],
-                        function_call: "auto"
+                            { role: "system", content: "Ты — ландшафтный дизайнер. Генерируй изображения. Не меняй контуры строений и заборов." },
+                            { role: "user", content: `Нарисуй ландшафтный дизайн: ${prompt}. Сохрани забор и дом 1-в-1: <img src="${sberId}">` }
+                        ]
                     })
                 });
                 const genData = await genRes.json();
@@ -83,35 +97,65 @@ export default async function handler(req, res) {
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
             try {
-                // Хелпер для корректного чтения полей
                 const getVal = (val) => Array.isArray(val) ? val[0] : val;
-
                 const engine = getVal(fields.engine) || "sber";
                 const style = getVal(fields.style) || "природный";
                 const custom = getVal(fields.customRequest) || "";
                 const modules = getVal(fields.modules) || "";
 
-                // ФОРМИРУЕМ ПОЛНЫЙ ПРОМПТ
-                const finalPrompt = `Ландшафтный дизайн, стиль: ${style}. Включить: ${modules}. Дополнительно: ${custom}. Фотореализм.`;
+                // ЖЕСТКИЙ ПРОМПТ ПРОТИВ КАМНЕЙ
+                const finalPrompt = `Lush green grass lawn, landscaping, style: ${style}. Elements: ${modules}. Extra: ${custom}. High quality, 8k, photorealistic. NO stones, NO gravel, NO rocks on the ground.`;
 
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 const fileData = fs.readFileSync(file.filepath);
                 const base64Image = fileData.toString('base64');
 
-                if (engine === 'yandex') {
+                if (engine === 'tensor') {
+                    const tensorRes = await fetch("https://api.tensor.art/v1/jobs", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${TENSOR_API_KEY}` },
+                        body: JSON.stringify({
+                            request_id: `job_${Date.now()}`,
+                            stages: [
+                                {
+                                    type: "INPUT_DATA",
+                                    input_data: {
+                                        prompt: finalPrompt,
+                                        negative_prompt: "stones, gravel, pavement, distorted house, messy garden",
+                                        model: "714441221774213793", // Juggernaut XL
+                                        image_num: 1
+                                    }
+                                },
+                                {
+                                    type: "CONTROLNET",
+                                    controlnet: {
+                                        model: "canny",
+                                        image: base64Image,
+                                        strength: 1.0,
+                                        preprocessor: "canny"
+                                    }
+                                }
+                            ]
+                        })
+                    });
+                    const data = await tensorRes.json();
+                    return res.status(200).json({ success: true, provider: 'tensor', operationId: data.job.id, prompt: finalPrompt });
+
+                } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
                         headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
                         body: JSON.stringify({
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
                             messages: [
-                                { weight: 1, text: finalPrompt },
-                                { weight: 0.85, image: base64Image }
+                                { weight: 1, text: "Keep the fence exactly as it is. Change only the ground to green grass. " + finalPrompt },
+                                { weight: 0.95, image: base64Image } // МАКСИМАЛЬНЫЙ ВЕС ОРИГИНАЛА
                             ]
                         })
                     });
                     const op = await yandRes.json();
-                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
+                    return res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
+
                 } else {
                     const token = await getSberToken();
                     const sberFormData = new FormData();
@@ -124,7 +168,7 @@ export default async function handler(req, res) {
                         body: sberFormData
                     });
                     const upData = await upRes.json();
-                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                    return res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
             } catch (e) { res.status(200).json({ success: false, error: e.message }); }
             resolve();
