@@ -9,7 +9,7 @@ const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
 const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
 const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
-const TENSOR_API_KEY = 'ak_tensor_noPYu9xL_u9UHxMk9kgU1Ilf7aZ2AIQFJ25NhjkLaOk'; // Замени на свой!
+const TENSOR_API_KEY = 'ak_tensor_noPYu9xL_u9UHxMk9kgU1Ilf7aZ2AIQFJ25NhjkLaOk'; 
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -49,8 +49,8 @@ export default async function handler(req, res) {
                     headers: { "Authorization": `Bearer ${TENSOR_API_KEY}` }
                 });
                 const data = await tensorCheck.json();
-                if (data.job.status === 'SUCCESS') {
-                    // Tensor отдает ссылку, скачиваем и переводим в base64
+                // Безопасная проверка статуса
+                if (data && data.job && data.job.status === 'SUCCESS') {
                     const imgRes = await fetch(data.job.success_output[0].url);
                     const buffer = await imgRes.arrayBuffer();
                     return res.status(200).json({ done: true, image: Buffer.from(buffer).toString('base64') });
@@ -103,7 +103,6 @@ export default async function handler(req, res) {
                 const custom = getVal(fields.customRequest) || "";
                 const modules = getVal(fields.modules) || "";
 
-                // ЖЕСТКИЙ ПРОМПТ ПРОТИВ КАМНЕЙ
                 const finalPrompt = `Lush green grass lawn, landscaping, style: ${style}. Elements: ${modules}. Extra: ${custom}. High quality, 8k, photorealistic. NO stones, NO gravel, NO rocks on the ground.`;
 
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
@@ -111,35 +110,57 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
+                    // Исправленная структура запроса для Tensor.art
                     const tensorRes = await fetch("https://api.tensor.art/v1/jobs", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${TENSOR_API_KEY}` },
+                        headers: { 
+                            "Content-Type": "application/json", 
+                            "Authorization": `Bearer ${TENSOR_API_KEY}` 
+                        },
                         body: JSON.stringify({
                             request_id: `job_${Date.now()}`,
                             stages: [
                                 {
-                                    type: "INPUT_DATA",
-                                    input_data: {
+                                    type: "TEXT_TO_IMAGE",
+                                    text_to_image: {
+                                        model: "714441221774213793", // Проверь, что этот ID еще валиден в консоли Tensor
                                         prompt: finalPrompt,
-                                        negative_prompt: "stones, gravel, pavement, distorted house, messy garden",
-                                        model: "714441221774213793", // Juggernaut XL
-                                        image_num: 1
+                                        negative_prompt: "stones, rocks, gravel, blurry, distorted architecture",
+                                        image_num: 1,
+                                        sd_upscale: {
+                                            upscale_by: 1,
+                                            denoising_strength: 0.5
+                                        }
                                     }
                                 },
                                 {
                                     type: "CONTROLNET",
                                     controlnet: {
-                                        model: "canny",
+                                        model: "canny", // Модель для контуров
                                         image: base64Image,
-                                        strength: 1.0,
+                                        strength: 0.8,
                                         preprocessor: "canny"
                                     }
                                 }
                             ]
                         })
                     });
+
                     const data = await tensorRes.json();
-                    return res.status(200).json({ success: true, provider: 'tensor', operationId: data.job.id, prompt: finalPrompt });
+
+                    // Безопасная обработка ответа
+                    if (data && data.job && data.job.id) {
+                        return res.status(200).json({ 
+                            success: true, 
+                            provider: 'tensor', 
+                            operationId: data.job.id, 
+                            prompt: finalPrompt 
+                        });
+                    } else {
+                        // Если Tensor вернул ошибку, прокидываем её сообщение на фронтенд
+                        const errorMsg = data.error?.message || JSON.stringify(data);
+                        throw new Error(`Tensor.art Error: ${errorMsg}`);
+                    }
 
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
@@ -149,7 +170,7 @@ export default async function handler(req, res) {
                             modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
                             messages: [
                                 { weight: 1, text: "Keep the fence exactly as it is. Change only the ground to green grass. " + finalPrompt },
-                                { weight: 0.95, image: base64Image } // МАКСИМАЛЬНЫЙ ВЕС ОРИГИНАЛА
+                                { weight: 0.95, image: base64Image }
                             ]
                         })
                     });
@@ -170,7 +191,10 @@ export default async function handler(req, res) {
                     const upData = await upRes.json();
                     return res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
-            } catch (e) { res.status(200).json({ success: false, error: e.message }); }
+            } catch (e) { 
+                console.error("Backend Error:", e.message);
+                res.status(200).json({ success: false, error: e.message }); 
+            }
             resolve();
         });
     });
