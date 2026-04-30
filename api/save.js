@@ -110,57 +110,59 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    // Исправленная структура запроса для Tensor.art
-                    const tensorRes = await fetch("https://api.tensor.art/v1/jobs", {
+                    // Используем официальный метод через Workflow Template из документации
+                    const tensorRes = await fetch("https://ap-east-1.tensorart.cloud/v1/jobs/workflow/template", {
                         method: "POST",
                         headers: { 
                             "Content-Type": "application/json", 
                             "Authorization": `Bearer ${TENSOR_API_KEY}` 
                         },
                         body: JSON.stringify({
-                            request_id: `job_${Date.now()}`,
-                            stages: [
-                                {
-                                    type: "TEXT_TO_IMAGE",
-                                    text_to_image: {
-                                        model: "714441221774213793", // Проверь, что этот ID еще валиден в консоли Tensor
-                                        prompt: finalPrompt,
-                                        negative_prompt: "stones, rocks, gravel, blurry, distorted architecture",
-                                        image_num: 1,
-                                        sd_upscale: {
-                                            upscale_by: 1,
-                                            denoising_strength: 0.5
-                                        }
+                            // ID шаблона ControlNet со скриншота документации
+                            templateId: "6910808619367602085", 
+                            fields: {
+                                fieldAttrs: [
+                                    {
+                                        nodeId: "11",
+                                        fieldName: "image",
+                                        fieldValue: base64Image // Твое исходное фото дома
+                                    },
+                                    {
+                                        nodeId: "14",
+                                        fieldName: "ckpt_name",
+                                        fieldValue: "681380884898701627" // Твой верный ID для Juggernaut XL
+                                    },
+                                    {
+                                        nodeId: "12",
+                                        fieldName: "control_net_name",
+                                        // Для XL моделей используем совместимый файл контуров
+                                        fieldValue: "diffusers_xl_canny_full.safetensors" 
+                                    },
+                                    {
+                                        nodeId: "10", 
+                                        fieldName: "text",
+                                        fieldValue: finalPrompt // Твой промпт для дизайна
                                     }
-                                },
-                                {
-                                    type: "CONTROLNET",
-                                    controlnet: {
-                                        model: "canny", // Модель для контуров
-                                        image: base64Image,
-                                        strength: 0.8,
-                                        preprocessor: "canny"
-                                    }
-                                }
-                            ]
+                                ]
+                            }
                         })
                     });
 
                     const data = await tensorRes.json();
 
-                    // Безопасная обработка ответа
                     if (data && data.job && data.job.id) {
                         return res.status(200).json({ 
                             success: true, 
                             provider: 'tensor', 
-                            operationId: data.job.id, 
+                            operationId: data.job.id,
                             prompt: finalPrompt 
                         });
                     } else {
-                        // Если Tensor вернул ошибку, прокидываем её сообщение на фронтенд
                         const errorMsg = data.error?.message || JSON.stringify(data);
-                        throw new Error(`Tensor.art Error: ${errorMsg}`);
+                        throw new Error(`Tensor Workflow Error: ${errorMsg}`);
                     }
+
+                }
 
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
