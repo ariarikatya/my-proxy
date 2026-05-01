@@ -116,7 +116,6 @@ export default async function handler(req, res) {
                 if (engine === 'tensor') {
                     console.log("Processing TensorArt with Template...");
                     
-                    // requestId теперь работает корректно через верхний импорт
                     const requestId = crypto.createHash('md5').update('' + Date.now()).digest('hex');
 
                     const tensorPayload = {
@@ -132,21 +131,35 @@ export default async function handler(req, res) {
                         }
                     };
 
+                    // Используем универсальный эндпоинт и добавляем обработку детальной ошибки
                     const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
-                            "Authorization": `Bearer ${TENSOR_API_KEY}`
+                            "Accept": "application/json",
+                            "Authorization": `Bearer ${TENSOR_API_KEY.trim()}`
                         },
                         body: JSON.stringify(tensorPayload)
                     });
 
                     const result = await response.json();
+
+                    // Если API вернуло ошибку, мы выведем её в логи Vercel целиком
+                    if (!response.ok || (result.error || result.message)) {
+                        console.error("Tensor Detailed Error:", JSON.stringify(result));
+                        return res.status(200).json({ 
+                            success: false, 
+                            error: `Tensor API: ${result.message || result.error || 'Unknown Error'}` 
+                        });
+                    }
+
                     if (result.job && result.job.id) {
                         res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
                     } else {
-                        res.status(200).json({ success: false, error: result.message || "Tensor API Error" });
+                        res.status(200).json({ success: false, error: "No Job ID received from Tensor" });
                     }
+
+                }
 
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
