@@ -3,7 +3,12 @@ import fs from 'fs';
 import { Buffer } from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-export const config = { api: { bodyParser: false } };
+
+// Конфиг для Vercel
+export const config = { 
+    api: { bodyParser: false },
+    maxDuration: 60 // Пытаемся выжать максимум времени
+};
 
 const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
@@ -49,7 +54,6 @@ export default async function handler(req, res) {
                     headers: { "Authorization": `Bearer ${TENSOR_API_KEY}` }
                 });
                 const data = await tensorCheck.json();
-                // Безопасная проверка статуса
                 if (data && data.job && data.job.status === 'SUCCESS') {
                     const imgRes = await fetch(data.job.success_output[0].url);
                     const buffer = await imgRes.arrayBuffer();
@@ -93,6 +97,7 @@ export default async function handler(req, res) {
         }
     }
 
+    // POST Метод
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
@@ -110,7 +115,6 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    // Используем официальный метод через Workflow Template из документации
                     const tensorRes = await fetch("https://ap-east-1.tensorart.cloud/v1/jobs/workflow/template", {
                         method: "POST",
                         headers: { 
@@ -118,51 +122,24 @@ export default async function handler(req, res) {
                             "Authorization": `Bearer ${TENSOR_API_KEY}` 
                         },
                         body: JSON.stringify({
-                            // ID шаблона ControlNet со скриншота документации
                             templateId: "6910808619367602085", 
                             fields: {
                                 fieldAttrs: [
-                                    {
-                                        nodeId: "11",
-                                        fieldName: "image",
-                                        fieldValue: base64Image // Твое исходное фото дома
-                                    },
-                                    {
-                                        nodeId: "14",
-                                        fieldName: "ckpt_name",
-                                        fieldValue: "681380884898701627" // Твой верный ID для Juggernaut XL
-                                    },
-                                    {
-                                        nodeId: "12",
-                                        fieldName: "control_net_name",
-                                        // Для XL моделей используем совместимый файл контуров
-                                        fieldValue: "diffusers_xl_canny_full.safetensors" 
-                                    },
-                                    {
-                                        nodeId: "10", 
-                                        fieldName: "text",
-                                        fieldValue: finalPrompt // Твой промпт для дизайна
-                                    }
+                                    { nodeId: "11", fieldName: "image", fieldValue: base64Image },
+                                    { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
+                                    { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
+                                    { nodeId: "10", fieldName: "text", fieldValue: finalPrompt }
                                 ]
                             }
                         })
                     });
 
                     const data = await tensorRes.json();
-
                     if (data && data.job && data.job.id) {
-                        return res.status(200).json({ 
-                            success: true, 
-                            provider: 'tensor', 
-                            operationId: data.job.id,
-                            prompt: finalPrompt 
-                        });
+                        res.status(200).json({ success: true, provider: 'tensor', operationId: data.job.id, prompt: finalPrompt });
                     } else {
-                        const errorMsg = data.error?.message || JSON.stringify(data);
-                        throw new Error(`Tensor Workflow Error: ${errorMsg}`);
+                        throw new Error(data.error?.message || "Tensor error");
                     }
-
-                }
 
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
@@ -177,7 +154,7 @@ export default async function handler(req, res) {
                         })
                     });
                     const op = await yandRes.json();
-                    return res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
+                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
 
                 } else {
                     const token = await getSberToken();
@@ -191,7 +168,7 @@ export default async function handler(req, res) {
                         body: sberFormData
                     });
                     const upData = await upRes.json();
-                    return res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
             } catch (e) { 
                 console.error("Backend Error:", e.message);
