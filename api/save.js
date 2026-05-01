@@ -132,7 +132,7 @@ export default async function handler(req, res) {
                         }
                     };
 
-                    const response = await fetch("https://ap-east-1.tensorart.cloud/v1/jobs/workflow/template", {
+                    const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json",
