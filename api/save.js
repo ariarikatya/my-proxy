@@ -1,13 +1,13 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
+import crypto from 'crypto'; // <-- ДОБАВИЛИ ЭТОТ ИМПОРТ
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-// Конфиг для Vercel
 export const config = { 
     api: { bodyParser: false },
-    maxDuration: 60 // Пытаемся выжать максимум времени
+    maxDuration: 60 
 };
 
 const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
@@ -97,7 +97,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // POST Метод
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
@@ -115,30 +114,38 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    const tensorRes = await fetch("https://ap-east-1.tensorart.cloud/v1/jobs/workflow/template", {
+                    console.log("Processing TensorArt with Template...");
+                    
+                    // requestId теперь работает корректно через верхний импорт
+                    const requestId = crypto.createHash('md5').update('' + Date.now()).digest('hex');
+
+                    const tensorPayload = {
+                        request_id: requestId,
+                        templateId: "6910808619367602085",
+                        fields: {
+                            fieldAttrs: [
+                                { nodeId: "11", fieldName: "image", fieldValue: base64Image },
+                                { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
+                                { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
+                                { nodeId: "10", fieldName: "text", fieldValue: finalPrompt }
+                            ]
+                        }
+                    };
+
+                    const response = await fetch("https://ap-east-1.tensorart.cloud/v1/jobs/workflow/template", {
                         method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json", 
-                            "Authorization": `Bearer ${TENSOR_API_KEY}` 
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization": `Bearer ${TENSOR_API_KEY}`
                         },
-                        body: JSON.stringify({
-                            templateId: "6910808619367602085", 
-                            fields: {
-                                fieldAttrs: [
-                                    { nodeId: "11", fieldName: "image", fieldValue: base64Image },
-                                    { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
-                                    { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
-                                    { nodeId: "10", fieldName: "text", fieldValue: finalPrompt }
-                                ]
-                            }
-                        })
+                        body: JSON.stringify(tensorPayload)
                     });
 
-                    const data = await tensorRes.json();
-                    if (data && data.job && data.job.id) {
-                        res.status(200).json({ success: true, provider: 'tensor', operationId: data.job.id, prompt: finalPrompt });
+                    const result = await response.json();
+                    if (result.job && result.job.id) {
+                        res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
                     } else {
-                        throw new Error(data.error?.message || "Tensor error");
+                        res.status(200).json({ success: false, error: result.message || "Tensor API Error" });
                     }
 
                 } else if (engine === 'yandex') {
