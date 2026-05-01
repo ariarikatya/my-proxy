@@ -114,85 +114,64 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    console.log("Processing TensorArt - Absolute Clean Format...");
-
-                    // 1. Максимально чистый Base64 без лишних символов
-                    const cleanBase64 = base64Image.replace(/\s/g, '');
-                    
-                    // 2. Специфичный префикс TensorArt
-                    const tensorImageValue = `base64://${cleanBase64}`;
-
-                    // 3. Короткий и чистый Request ID
-                    const requestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-                    const tensorPayload = {
-                        request_id: requestId,
-                        templateId: "6910808619367602085",
-                        fields: {
-                            fieldAttrs: [
-                                // В некоторых версиях API nodeId должен быть строкой, в некоторых - числом. 
-                                // Попробуем строковый вариант с заплаткой для значений.
-                                { nodeId: "11", fieldName: "image", fieldValue: tensorImageValue },
-                                { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
-                                { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
-                                { nodeId: "10", fieldName: "text", fieldValue: String(finalPrompt) }
-                            ]
-                        }
-                    };
-
-                    console.log("Payload Prepared. Image length:", cleanBase64.length);
-
-                    const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Accept": "application/json",
-                            "Authorization": `Bearer ${TENSOR_API_KEY.trim()}`
-                        },
-                        body: JSON.stringify(tensorPayload)
-                    });
-
-                    const result = await response.json();
-
-                    if (!response.ok || result.code !== 0) {
-                        console.error("Tensor Error Details:", JSON.stringify(result));
-                        
-                        // Если опять 20000, пробуем ПЛОСКИЙ формат, но с префиксом base64://
-                        if (result.code === 20000) {
-                            console.log("Fallback to flat fields with base64:// prefix...");
-                            const fallbackResponse = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
-                                method: "POST",
-                                headers: {
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json",
-                                    "Authorization": `Bearer ${TENSOR_API_KEY.trim()}`
-                                },
-                                body: JSON.stringify({
-                                    request_id: requestId + "_fb",
-                                    templateId: "6910808619367602085",
-                                    fields: {
-                                        "image": tensorImageValue,
-                                        "text": String(finalPrompt),
-                                        "ckpt_name": "681380884898701627",
-                                        "control_net_name": "diffusers_xl_canny_full.safetensors"
-                                    }
-                                })
-                            });
-                            const fbResult = await fallbackResponse.json();
-                            if (fbResult.job?.id) {
-                                return res.status(200).json({ success: true, provider: 'tensor', operationId: fbResult.job.id });
-                            }
-                        }
-
-                        return res.status(200).json({ 
-                            success: false, 
-                            error: `Tensor API: ${result.msg || result.message || 'System Fail'}`,
-                            debug: result.errCode 
+                    try {
+                        console.log("Step 1: Getting upload address...");
+                        // 1. Получаем временную ссылку для загрузки
+                        const addrRes = await fetch("https://api.tensor.art/v1/resource/upload-address?expire=3600", {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${TENSOR_API_KEY.trim()}` }
                         });
-                    }
+                        const addrData = await addrRes.json();
+                        
+                        if (!addrData.upload_url) {
+                            throw new Error(`Failed to get upload URL: ${JSON.stringify(addrData)}`);
+                        }
 
-                    if (result.job && result.job.id) {
-                        return res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
+                        console.log("Step 2: Uploading binary data to Tensor S3...");
+                        // 2. Загружаем файл напрямую (бинарный Buffer)
+                        await fetch(addrData.upload_url, {
+                            method: 'PUT',
+                            body: fileData, // Используем Buffer от fs.readFileSync
+                            headers: { 'Content-Type': 'image/jpeg' }
+                        });
+
+                        console.log("Step 3: Sending workflow job with Resource ID:", addrData.resource_id);
+                        // 3. Формируем финальный запрос, используя только ID ресурса
+                        const requestId = crypto.randomBytes(16).toString('hex');
+                        const tensorPayload = {
+                            request_id: requestId,
+                            templateId: "6910808619367602085",
+                            fields: {
+                                fieldAttrs: [
+                                    { nodeId: "11", fieldName: "image", fieldValue: addrData.resource_id },
+                                    { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
+                                    { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
+                                    { nodeId: "10", fieldName: "text", fieldValue: String(finalPrompt) }
+                                ]
+                            }
+                        };
+
+                        const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${TENSOR_API_KEY.trim()}`
+                            },
+                            body: JSON.stringify(tensorPayload)
+                        });
+
+                        const result = await response.json();
+
+                        if (result.job && result.job.id) {
+                            return res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
+                        } else {
+                            console.error("Tensor Job Error:", result);
+                            return res.status(200).json({ success: false, error: result.msg || "Job creation failed" });
+                        }
+
+                    } catch (e) {
+                        console.error("Tensor Full Pipeline Error:", e.message);
+                        return res.status(200).json({ success: false, error: `Tensor Pipeline: ${e.message}` });
                     }
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
