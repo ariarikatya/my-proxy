@@ -114,22 +114,33 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    console.log("Processing TensorArt with Simplified Payload...");
+                    console.log("Processing TensorArt - Absolute Clean Format...");
+
+                    // 1. Максимально чистый Base64 без лишних символов
+                    const cleanBase64 = base64Image.replace(/\s/g, '');
                     
-                    // Делаем ID более уникальным
-                    const requestId = crypto.randomUUID?.() || crypto.createHash('md5').update(Date.now() + Math.random().toString()).digest('hex');
+                    // 2. Специфичный префикс TensorArt
+                    const tensorImageValue = `base64://${cleanBase64}`;
+
+                    // 3. Короткий и чистый Request ID
+                    const requestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
                     const tensorPayload = {
                         request_id: requestId,
                         templateId: "6910808619367602085",
                         fields: {
-                            // Передаем поля плоским списком — так работает 90% шаблонов
-                            "image": base64Image,
-                            "text": finalPrompt,
-                            "ckpt_name": "681380884898701627",
-                            "control_net_name": "diffusers_xl_canny_full.safetensors"
+                            fieldAttrs: [
+                                // В некоторых версиях API nodeId должен быть строкой, в некоторых - числом. 
+                                // Попробуем строковый вариант с заплаткой для значений.
+                                { nodeId: "11", fieldName: "image", fieldValue: tensorImageValue },
+                                { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
+                                { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
+                                { nodeId: "10", fieldName: "text", fieldValue: String(finalPrompt) }
+                            ]
                         }
                     };
+
+                    console.log("Payload Prepared. Image length:", cleanBase64.length);
 
                     const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
                         method: "POST",
@@ -143,20 +154,46 @@ export default async function handler(req, res) {
 
                     const result = await response.json();
 
-                    if (!response.ok || result.error || result.message || result.code === 20000) {
-                        console.error("Tensor Detailed Error:", JSON.stringify(result));
+                    if (!response.ok || result.code !== 0) {
+                        console.error("Tensor Error Details:", JSON.stringify(result));
+                        
+                        // Если опять 20000, пробуем ПЛОСКИЙ формат, но с префиксом base64://
+                        if (result.code === 20000) {
+                            console.log("Fallback to flat fields with base64:// prefix...");
+                            const fallbackResponse = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
+                                method: "POST",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json",
+                                    "Authorization": `Bearer ${TENSOR_API_KEY.trim()}`
+                                },
+                                body: JSON.stringify({
+                                    request_id: requestId + "_fb",
+                                    templateId: "6910808619367602085",
+                                    fields: {
+                                        "image": tensorImageValue,
+                                        "text": String(finalPrompt),
+                                        "ckpt_name": "681380884898701627",
+                                        "control_net_name": "diffusers_xl_canny_full.safetensors"
+                                    }
+                                })
+                            });
+                            const fbResult = await fallbackResponse.json();
+                            if (fbResult.job?.id) {
+                                return res.status(200).json({ success: true, provider: 'tensor', operationId: fbResult.job.id });
+                            }
+                        }
+
                         return res.status(200).json({ 
                             success: false, 
-                            error: `Tensor API (${result.errCode || 'FAIL'}): ${result.msg || result.message || 'Unknown Error'}` 
+                            error: `Tensor API: ${result.msg || result.message || 'System Fail'}`,
+                            debug: result.errCode 
                         });
                     }
 
                     if (result.job && result.job.id) {
                         return res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
-                    } else {
-                        return res.status(200).json({ success: false, error: "No Job ID in response" });
                     }
-
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
