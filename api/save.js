@@ -1,7 +1,7 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
-import crypto from 'crypto'; // <-- ДОБАВИЛИ ЭТОТ ИМПОРТ
+import crypto from 'crypto';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -51,7 +51,7 @@ export default async function handler(req, res) {
 
             if (tensorId) {
                 const tensorCheck = await fetch(`https://api.tensor.art/v1/jobs/${tensorId}`, {
-                    headers: { "Authorization": `Bearer ${TENSOR_API_KEY}` }
+                    headers: { "Authorization": `Bearer ${TENSOR_API_KEY.trim()}` }
                 });
                 const data = await tensorCheck.json();
                 if (data && data.job && data.job.status === 'SUCCESS') {
@@ -115,7 +115,6 @@ export default async function handler(req, res) {
 
                 if (engine === 'tensor') {
                     console.log("Processing TensorArt with Template...");
-                    
                     const requestId = crypto.createHash('md5').update('' + Date.now()).digest('hex');
 
                     const tensorPayload = {
@@ -131,7 +130,6 @@ export default async function handler(req, res) {
                         }
                     };
 
-                    // Используем универсальный эндпоинт и добавляем обработку детальной ошибки
                     const response = await fetch("https://api.tensor.art/v1/jobs/workflow/template", {
                         method: "POST",
                         headers: {
@@ -144,8 +142,7 @@ export default async function handler(req, res) {
 
                     const result = await response.json();
 
-                    // Если API вернуло ошибку, мы выведем её в логи Vercel целиком
-                    if (!response.ok || (result.error || result.message)) {
+                    if (!response.ok || result.error || result.message) {
                         console.error("Tensor Detailed Error:", JSON.stringify(result));
                         return res.status(200).json({ 
                             success: false, 
@@ -154,12 +151,10 @@ export default async function handler(req, res) {
                     }
 
                     if (result.job && result.job.id) {
-                        res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
+                        return res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
                     } else {
-                        res.status(200).json({ success: false, error: "No Job ID received from Tensor" });
+                        return res.status(200).json({ success: false, error: "No Job ID received from Tensor" });
                     }
-
-                }
 
                 } else if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
@@ -174,7 +169,7 @@ export default async function handler(req, res) {
                         })
                     });
                     const op = await yandRes.json();
-                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
+                    return res.status(200).json({ success: true, provider: 'yandex', operationId: op.id, prompt: finalPrompt });
 
                 } else {
                     const token = await getSberToken();
@@ -188,7 +183,7 @@ export default async function handler(req, res) {
                         body: sberFormData
                     });
                     const upData = await upRes.json();
-                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                    return res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                 }
             } catch (e) { 
                 console.error("Backend Error:", e.message);
