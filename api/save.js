@@ -114,19 +114,20 @@ export default async function handler(req, res) {
                 const base64Image = fileData.toString('base64');
 
                 if (engine === 'tensor') {
-                    console.log("Processing TensorArt with Template...");
-                    const requestId = crypto.createHash('md5').update('' + Date.now()).digest('hex');
+                    console.log("Processing TensorArt with Simplified Payload...");
+                    
+                    // Делаем ID более уникальным
+                    const requestId = crypto.randomUUID?.() || crypto.createHash('md5').update(Date.now() + Math.random().toString()).digest('hex');
 
                     const tensorPayload = {
                         request_id: requestId,
                         templateId: "6910808619367602085",
                         fields: {
-                            fieldAttrs: [
-                                { nodeId: "11", fieldName: "image", fieldValue: base64Image },
-                                { nodeId: "14", fieldName: "ckpt_name", fieldValue: "681380884898701627" },
-                                { nodeId: "12", fieldName: "control_net_name", fieldValue: "diffusers_xl_canny_full.safetensors" },
-                                { nodeId: "10", fieldName: "text", fieldValue: finalPrompt }
-                            ]
+                            // Передаем поля плоским списком — так работает 90% шаблонов
+                            "image": base64Image,
+                            "text": finalPrompt,
+                            "ckpt_name": "681380884898701627",
+                            "control_net_name": "diffusers_xl_canny_full.safetensors"
                         }
                     };
 
@@ -142,18 +143,18 @@ export default async function handler(req, res) {
 
                     const result = await response.json();
 
-                    if (!response.ok || result.error || result.message) {
+                    if (!response.ok || result.error || result.message || result.code === 20000) {
                         console.error("Tensor Detailed Error:", JSON.stringify(result));
                         return res.status(200).json({ 
                             success: false, 
-                            error: `Tensor API: ${result.message || result.error || 'Unknown Error'}` 
+                            error: `Tensor API (${result.errCode || 'FAIL'}): ${result.msg || result.message || 'Unknown Error'}` 
                         });
                     }
 
                     if (result.job && result.job.id) {
                         return res.status(200).json({ success: true, provider: 'tensor', operationId: result.job.id });
                     } else {
-                        return res.status(200).json({ success: false, error: "No Job ID received from Tensor" });
+                        return res.status(200).json({ success: false, error: "No Job ID in response" });
                     }
 
                 } else if (engine === 'yandex') {
