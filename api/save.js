@@ -106,21 +106,21 @@ export default async function handler(req, res) {
                     console.log("Using Cloudflare Workers AI...");
                     
                     const cfResponse = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
-                        {
-                            method: "POST",
-                            headers: { 
-                                "Authorization": `Bearer ${CF_API_TOKEN}`,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                prompt: finalPrompt,
-                                image: [...new Uint8Array(fileData)], // Конвертируем Buffer в массив для Cloudflare
-                                strength: 0.6, // Баланс между оригиналом и дизайном
-                                num_steps: 20
-                            }),
-                        }
-                    );
+    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
+    {
+        method: "POST",
+        headers: { 
+            "Authorization": `Bearer ${CF_API_TOKEN}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            prompt: finalPrompt,
+            image: [...fileData], // fileData — это Buffer, превращаем его в массив байтов
+            strength: 0.6,
+            num_steps: 20
+        }),
+    }
+);
 
                     if (!cfResponse.ok) {
                         const errorData = await cfResponse.json();
