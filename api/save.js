@@ -9,14 +9,13 @@ export const config = {
     maxDuration: 60 
 };
 
-// --- КОНФИГУРАЦИЯ CLOUDFLARE ---
-const CF_ACCOUNT_ID = '4140c8390787b7af21d2263f16845503';
-const CF_API_TOKEN = 'cfut_qMnMpZKdpGE4UyDjjn2l8DuuULf1Eo3qG6Q4ODma953aa10c';
-
-const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
-const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
-const SBER_CLIENT_ID = '019da1ca-3d92-737e-a24f-4936ea14a462';
-const SBER_CLIENT_SECRET = 'acaed982-e2a0-470e-8a99-98e156836e9b';
+// --- ЧИСТАЯ КОНФИГУРАЦИЯ (БЕЗ СЕКРЕТОВ) ---
+const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
+const CF_API_TOKEN = process.env.CF_API_TOKEN;
+const YANDEX_API_KEY = process.env.YANDEX_API_KEY;
+const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID;
+const SBER_CLIENT_ID = process.env.SBER_CLIENT_ID;
+const SBER_CLIENT_SECRET = process.env.SBER_CLIENT_SECRET;
 
 export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,7 +38,6 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ОБРАБОТКА GET (Опрос статуса) ---
     if (req.method === 'GET') {
         const { yandexId, sberId, prompt } = req.query;
         try {
@@ -86,7 +84,6 @@ export default async function handler(req, res) {
         }
     }
 
-    // --- ОБРАБОТКА POST (Запуск генерации) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
@@ -101,37 +98,33 @@ export default async function handler(req, res) {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 const fileData = fs.readFileSync(file.filepath);
 
-                // --- ЛОГИКА CLOUDFLARE (замена Тензора) ---
                 if (engine === 'tensor') {
-                    console.log("Using Cloudflare Workers AI...");
-                    
                     const cfResponse = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
-    {
-        method: "POST",
-        headers: { 
-            "Authorization": `Bearer ${CF_API_TOKEN}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            prompt: finalPrompt,
-            image: [...fileData], // fileData — это Buffer, превращаем его в массив байтов
-            strength: 0.6,
-            num_steps: 20
-        }),
-    }
-);
+                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
+                        {
+                            method: "POST",
+                            headers: { 
+                                "Authorization": `Bearer ${CF_API_TOKEN}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify({
+                                prompt: finalPrompt,
+                                // Используем base64 для Cloudflare, так надежнее
+                                image_b64: fileData.toString('base64'),
+                                strength: 0.6,
+                                num_steps: 20
+                            }),
+                        }
+                    );
 
                     if (!cfResponse.ok) {
                         const errorData = await cfResponse.json();
                         throw new Error(`Cloudflare Error: ${JSON.stringify(errorData)}`);
                     }
 
-                    // Cloudflare возвращает сразу бинарный файл картинки
                     const imageBuffer = await cfResponse.arrayBuffer();
                     const base64Image = Buffer.from(imageBuffer).toString('base64');
 
-                    // Так как Cloudflare отвечает мгновенно, мы сразу возвращаем "done"
                     return res.status(200).json({ 
                         success: true, 
                         done: true, 
@@ -140,7 +133,6 @@ export default async function handler(req, res) {
                     });
                 }
 
-                // Логика Yandex и Sber остается без изменений...
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
