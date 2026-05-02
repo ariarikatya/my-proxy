@@ -99,39 +99,39 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 if (engine === 'tensor') {
-                    const cfResponse = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
-                        {
-                            method: "POST",
-                            headers: { 
-                                "Authorization": `Bearer ${CF_API_TOKEN}`,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                prompt: finalPrompt,
-                                // Используем base64 для Cloudflare, так надежнее
-                                image_b64: fileData.toString('base64'),
-                                strength: 0.6,
-                                num_steps: 20
-                            }),
-                        }
-                    );
+    const cfResponse = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`,
+        {
+            method: "POST",
+            headers: { 
+                "Authorization": `Bearer ${CF_API_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                prompt: finalPrompt,
+                image_b64: fileData.toString('base64'),
+                // Для SDXL ставим силу поменьше, он очень мощный
+                strength: 0.3, 
+                num_steps: 30 // SDXL любит побольше шагов для качества
+            }),
+        }
+    );
 
-                    if (!cfResponse.ok) {
-                        const errorData = await cfResponse.json();
-                        throw new Error(`Cloudflare Error: ${JSON.stringify(errorData)}`);
-                    }
+    if (!cfResponse.ok) {
+        const errorData = await cfResponse.json();
+        throw new Error(`Cloudflare Error: ${JSON.stringify(errorData)}`);
+    }
 
-                    const imageBuffer = await cfResponse.arrayBuffer();
-                    const base64Image = Buffer.from(imageBuffer).toString('base64');
+    const imageBuffer = await cfResponse.arrayBuffer();
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
 
-                    return res.status(200).json({ 
-                        success: true, 
-                        done: true, 
-                        provider: 'cloudflare', 
-                        image: base64Image 
-                    });
-                }
+    return res.status(200).json({ 
+        success: true, 
+        done: true, 
+        provider: 'cloudflare', 
+        image: base64Image 
+    });
+}
 
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
