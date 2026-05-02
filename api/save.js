@@ -10,8 +10,8 @@ export const config = {
 };
 
 // --- КОНФИГУРАЦИЯ CLOUDFLARE ---
-const CF_ACCOUNT_ID = 'ВАШ_ACCOUNT_ID_ЗДЕСЬ';
-const CF_API_TOKEN = 'ВАШ_API_TOKEN_ЗДЕСЬ';
+const CF_ACCOUNT_ID = '4140c8390787b7af21d2263f16845503';
+const CF_API_TOKEN = 'cfut_qMnMpZKdpGE4UyDjjn2l8DuuULf1Eo3qG6Q4ODma953aa10c';
 
 const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK';
 const YANDEX_FOLDER_ID = 'b1ge0eghvcu1vefb33qi'; 
