@@ -100,7 +100,7 @@ export default async function handler(req, res) {
 
                 if (engine === 'tensor') {
                     const cfResponse = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`,
+                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
                         {
                             method: "POST",
                             headers: { 
@@ -109,10 +109,9 @@ export default async function handler(req, res) {
                             },
                             body: JSON.stringify({
                                 prompt: finalPrompt,
-                                image_b64: fileData.toString('base64'),
-                                strength: 0.3, // Оставляем 0.3, чтобы забор не превратился в дом
-                                num_steps: 20, // Максимум для этой модели в CF
-                                guidance: 7.5  // Помогает следовать промпту
+                                image: [...fileData], // Cloudflare v1.5 часто просит массив байтов вместо base64
+                                strength: 0.4, 
+                                num_steps: 20
                             }),
                         }
                     );
