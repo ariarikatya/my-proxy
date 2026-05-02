@@ -1,7 +1,9 @@
 {
   "type": "module",
   "dependencies": {
+    "form-data": "^4.0.1",
     "formidable": "^3.5.1",
+    "fs": "0.0.1-security"
     "node-fetch": "^3.3.2"
   }
 }
