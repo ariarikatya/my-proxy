@@ -94,39 +94,53 @@ export default async function handler(req, res) {
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 const fileData = fs.readFileSync(file.filepath);
 
-                // --- НОВЫЙ БЛОК: POLLINATIONS (KLEIN) ---
-                if (engine === 'pollinations') {
-                    const pollFormData = new FormData();
-                    pollFormData.append('image', fileData, { filename: 'image.jpg', contentType: 'image/jpeg' });
-                    pollFormData.append('model', 'klein');
-                    pollFormData.append('prompt', finalPrompt);
-                    pollFormData.append('enhance', 'true');
+                // --- ИСПРАВЛЕННЫЙ БЛОК: POLLINATIONS (KLEIN) ---
+if (engine === 'pollinations') {
+    const pollFormData = new FormData();
+    
+    // Передаем файл. Для модели klein это будет наш референс.
+    pollFormData.append('image', fileData, { 
+        filename: 'image.jpg', 
+        contentType: 'image/jpeg' 
+    });
+    
+    // Указываем именно мультимодальную модель со скриншота
+    pollFormData.append('model', 'klein'); 
+    pollFormData.append('prompt', finalPrompt);
+    pollFormData.append('response_format', 'b64_json');
 
-                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
-                            ...pollFormData.getHeaders()
-                        },
-                        body: pollFormData
-                    });
+    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
+            ...pollFormData.getHeaders()
+        },
+        body: pollFormData
+    });
 
-                    if (!pollRes.ok) {
-                        const errText = await pollRes.text();
-                        throw new Error(`Pollinations Error: ${errText}`);
-                    }
+    if (!pollRes.ok) {
+        const errText = await pollRes.text();
+        console.error("Pollinations Raw Error:", errText);
+        throw new Error(`Pollinations Error: ${pollRes.status}`);
+    }
 
-                    // Pollinations возвращает JSON с ссылкой или base64
-                    const pollData = await pollRes.json();
-                    const resultImg = pollData.data[0].b64_json || pollData.data[0].url;
+    const pollData = await pollRes.json();
+    
+    if (!pollData.data || !pollData.data[0]) {
+        throw new Error("Pollinations вернул пустой ответ");
+    }
 
-                    return res.status(200).json({ 
-                        success: true, 
-                        done: true, 
-                        provider: 'pollinations', 
-                        image: resultImg.includes('base64') ? resultImg.split(',')[1] : resultImg 
-                    });
-                }
+    // Извлекаем результат (base64 или ссылка)
+    const resultImg = pollData.data[0].b64_json || pollData.data[0].url;
+
+    return res.status(200).json({ 
+        success: true, 
+        done: true, 
+        provider: 'pollinations', 
+        image: resultImg.startsWith('http') ? resultImg : (resultImg.includes('base64') ? resultImg.split(',')[1] : resultImg),
+        isUrl: resultImg.startsWith('http')
+    });
+}
 
                 // --- ЯНДЕКС ---
                 if (engine === 'yandex') {
