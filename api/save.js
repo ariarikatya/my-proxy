@@ -100,7 +100,7 @@ export default async function handler(req, res) {
 
                 if (engine === 'tensor') {
                     const cfResponse = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/bytedance/stable-diffusion-xl-lightning`,
+                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`,
                         {
                             method: "POST",
                             headers: { 
@@ -110,10 +110,9 @@ export default async function handler(req, res) {
                             body: JSON.stringify({
                                 prompt: finalPrompt,
                                 image_b64: fileData.toString('base64'),
-                                // Для Lightning лучше ставить strength в районе 0.4-0.5
-                                strength: 0.4, 
-                                // Lightning работает супер-быстро, 4-8 шагов достаточно
-                                num_steps: 8 
+                                strength: 0.3, // Оставляем 0.3, чтобы забор не превратился в дом
+                                num_steps: 20, // Максимум для этой модели в CF
+                                guidance: 7.5  // Помогает следовать промпту
                             }),
                         }
                     );
