@@ -99,39 +99,42 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 if (engine === 'tensor') {
-                    const cfResponse = await fetch(
-                        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
-                        {
-                            method: "POST",
-                            headers: { 
-                                "Authorization": `Bearer ${CF_API_TOKEN}`,
-                                "Content-Type": "application/json"
-                            },
-                            body: JSON.stringify({
-                                prompt: finalPrompt,
-                                image: [...fileData], // Cloudflare v1.5 часто просит массив байтов вместо base64
-                                strength: 0.4, 
-                                num_steps: 20
-                            }),
-                        }
-                    );
+    // Преобразуем Buffer в массив чисел, который понимает API Cloudflare для SDXL
+    const uint8Array = new Uint8Array(fileData);
+    const imageArray = Array.from(uint8Array);
 
-                    if (!cfResponse.ok) {
-                        const errorData = await cfResponse.json();
-                        throw new Error(`Cloudflare Error: ${JSON.stringify(errorData)}`);
-                    }
+    const cfResponse = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/ai/run/@cf/stabilityai/stable-diffusion-xl-base-1.0`,
+        {
+            method: "POST",
+            headers: { 
+                "Authorization": `Bearer ${CF_API_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                prompt: finalPrompt,
+                image: imageArray, // Передаем как массив, а не b64
+                strength: 0.5,     // Увеличим до 0.5, чтобы он набрался смелости нарисовать розы
+                num_steps: 20
+            }),
+        }
+    );
 
-                    const imageBuffer = await cfResponse.arrayBuffer();
-                    const base64Image = Buffer.from(imageBuffer).toString('base64');
+    if (!cfResponse.ok) {
+        const errorData = await cfResponse.json();
+        throw new Error(`Cloudflare Error: ${JSON.stringify(errorData)}`);
+    }
 
-                    return res.status(200).json({ 
-                        success: true, 
-                        done: true, 
-                        provider: 'cloudflare', 
-                        image: base64Image 
-                    });
-                }
+    const imageBuffer = await cfResponse.arrayBuffer();
+    const base64Image = Buffer.from(imageBuffer).toString('base64');
 
+    return res.status(200).json({ 
+        success: true, 
+        done: true, 
+        provider: 'cloudflare', 
+        image: base64Image 
+    });
+}
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
