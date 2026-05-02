@@ -108,12 +108,11 @@ export default async function handler(req, res) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                prompt: finalPrompt,
-                image_b64: fileData.toString('base64'),
-                // Для SDXL ставим силу поменьше, он очень мощный
-                strength: 0.3, 
-                num_steps: 30 // SDXL любит побольше шагов для качества
-            }),
+    prompt: finalPrompt,
+    image_b64: fileData.toString('base64'),
+    strength: 0.35, // Чуть-чуть добавим уверенности
+    num_steps: 20   // СТРОГО 20 или меньше, иначе будет ошибка
+}),
         }
     );
 
