@@ -95,23 +95,23 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 // --- ИСПРАВЛЕННЫЙ БЛОК: POLLINATIONS (KLEIN) ---
-// --- ИСПРАВЛЕННЫЙ БЛОК: POLLINATIONS (KLEIN) ---
+// --- БРОНИРОВАННЫЙ БЛОК: POLLINATIONS ---
 if (engine === 'pollinations') {
     try {
         const pollFormData = new FormData();
         
-        // Передаем файл. Убедись, что fileData — это Buffer (fs.readFileSync его и возвращает)
+        // Добавляем файл именно так, как требует спецификация multipart
         pollFormData.append('image', fileData, { 
-            filename: 'image.jpg', 
-            contentType: 'image/jpeg',
-            knownLength: fileData.length 
+            filename: 'input_image.jpg', 
+            contentType: 'image/jpeg' 
         });
         
         pollFormData.append('model', 'klein'); 
         pollFormData.append('prompt', finalPrompt);
         pollFormData.append('response_format', 'b64_json');
 
-        const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+        // Попробуем сменить эндпоинт на более стабильный для генерации по фото
+        const pollRes = await fetch('https://gen.pollinations.ai/v1/images/generations', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
@@ -120,34 +120,39 @@ if (engine === 'pollinations') {
             body: pollFormData
         });
 
-        // Сначала получаем текст, чтобы не упасть на .json()
+        // КРИТИЧЕСКИЙ МОМЕНТ: проверяем тип контента перед парсингом
+        const contentType = pollRes.headers.get("content-type");
         const responseText = await pollRes.text();
 
         if (!pollRes.ok) {
-            console.error("Pollinations Error Body:", responseText);
+            console.error("API Error:", responseText);
             return res.status(pollRes.status).json({ 
                 success: false, 
-                error: `Server returned ${pollRes.status}: ${responseText.slice(0, 100)}` 
+                error: `Pollinations API вернул ${pollRes.status}. Проверь ключ или лимиты.` 
             });
         }
 
-        const pollData = JSON.parse(responseText);
-        
-        if (!pollData.data || !pollData.data[0]) {
-            throw new Error("Pollinations вернул пустой массив данных");
+        if (contentType && contentType.includes("application/json")) {
+            const pollData = JSON.parse(responseText);
+            const resultImg = pollData.data[0].b64_json || pollData.data[0].url;
+
+            return res.status(200).json({ 
+                success: true, 
+                done: true, 
+                provider: 'pollinations', 
+                image: resultImg,
+                isUrl: resultImg.startsWith('http')
+            });
+        } else {
+            // Если пришел не JSON (тот самый случай с '<')
+            return res.status(500).json({ 
+                success: false, 
+                error: "Сервер прислал HTML вместо данных. Возможно, неверный URL API." 
+            });
         }
 
-        const resultImg = pollData.data[0].b64_json || pollData.data[0].url;
-
-        return res.status(200).json({ 
-            success: true, 
-            done: true, 
-            provider: 'pollinations', 
-            image: resultImg.startsWith('http') ? resultImg : (resultImg.includes('base64') ? resultImg.split(',')[1] : resultImg),
-            isUrl: resultImg.startsWith('http')
-        });
     } catch (pollErr) {
-        return res.status(200).json({ success: false, error: "Pollinations logic error: " + pollErr.message });
+        return res.status(500).json({ success: false, error: "Ошибка Pollinations: " + pollErr.message });
     }
 }
 
