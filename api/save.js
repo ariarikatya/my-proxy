@@ -1,7 +1,6 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
-//import FormData from 'form-data';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -100,69 +99,39 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules);
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                // --- 1. ПОДГОТОВКА ФАЙЛА (Важно: делаем это ПЕРЕД использованием в движках) ---
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
 
-               // --- 2. POLLINATIONS (Image-to-Image Edit / OpenAI-compatible) ---
-if (engine === 'pollinations') {
-    const pollFormData = new globalThis.FormData();
-    
-    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
-    
-    pollFormData.append('image', imageBlob, 'image.jpg');
-    pollFormData.append('prompt', finalPrompt);
-    pollFormData.append('model', 'klein');
-    // ЯВНО указываем, что хотим URL, чтобы API не вредничало
-    pollFormData.append('response_format', 'url'); 
+                // --- 1. POLLINATIONS ---
+                if (engine === 'pollinations') {
+                    const pollFormData = new globalThis.FormData();
+                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+                    pollFormData.append('image', imageBlob, 'image.jpg');
+                    pollFormData.append('prompt', finalPrompt);
+                    pollFormData.append('model', 'klein');
+                    pollFormData.append('response_format', 'url'); 
 
-    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
-        },
-        body: pollFormData
-    });
+                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
+                        body: pollFormData
+                    });
 
-    const pollData = await pollRes.json();
+                    const pollData = await pollRes.json();
+                    const result = pollData.data?.[0];
 
-    if (!pollRes.ok) {
-        console.error("Pollinations Error Details:", pollData);
-        throw new Error(pollData.error?.message || `Ошибка API: ${pollRes.status}`);
-    }
+                    if (result?.url) {
+                        res.status(200).json({ success: true, done: true, provider: 'pollinations', image: String(result.url), isUrl: true });
+                    } else if (result?.b64_json) {
+                        res.status(200).json({ success: true, done: true, provider: 'pollinations', image: result.b64_json, isUrl: false });
+                    } else {
+                        throw new Error("Pollinations не вернул изображение");
+                    }
+                    return resolve();
+                }
 
-    // УНИВЕРСАЛЬНАЯ ПРОВЕРКА (Ловим и URL, и Base64)
-    const result = pollData.data?.[0];
-    const generatedUrl = result?.url;
-    const generatedBase64 = result?.b64_json;
-
-    if (generatedUrl) {
-        // Если пришла ссылка
-        res.status(200).json({ 
-            success: true, 
-            done: true, 
-            provider: 'pollinations', 
-            image: String(generatedUrl), 
-            isUrl: true 
-        });
-    } else if (generatedBase64) {
-        // Если всё равно пришел Base64 (несмотря на нашу просьбу)
-        // Добавляем префикс, чтобы фронтенд (Tilda/FlutterFlow) сразу понял, что это картинка
-        const base64Image = `data:image/jpeg;base64,${generatedBase64}`;
-        res.status(200).json({ 
-            success: true, 
-            done: true, 
-            provider: 'pollinations', 
-            image: base64Image, 
-            isUrl: false 
-        });
-    } else {
-        throw new Error(`Данные изображения не найдены в ответе: ${JSON.stringify(pollData)}`);
-    }
-    return resolve();
-}
-                // --- 3. YANDEX ---
+                // --- 2. YANDEX ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -180,42 +149,41 @@ if (engine === 'pollinations') {
                     return resolve();
                 }
 
-                // --- 4. СБЕР (GigaChat) ---
+                // --- 3. СБЕР (GigaChat) ---
                 if (engine === 'sber') {
-                    try {
-                        const token = await getSberToken();
-                        const sberFormData = new globalThis.FormData();
-                        
-                        // Оборачиваем в Blob для нативного fetch
-                        const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
-                        
-                        sberFormData.append('file', imageBlob, 'image.jpg');
-                        sberFormData.append('purpose', 'general');
+                    const token = await getSberToken();
+                    const sberFormData = new globalThis.FormData();
+                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+                    sberFormData.append('file', imageBlob, 'image.jpg');
+                    sberFormData.append('purpose', 'general');
 
-                        const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                            method: 'POST',
-                            headers: { 'Authorization': `Bearer ${token}` },
-                            body: sberFormData
-                        });
+                    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: sberFormData
+                    });
 
-                        const upData = await upRes.json();
+                    const upData = await upRes.json();
+                    if (!upRes.ok) throw new Error(upData.message || "Ошибка загрузки в Сбер");
 
-                        if (!upRes.ok) {
-                            throw new Error(upData.message || `Ошибка загрузки в Сбер: ${upRes.status}`);
-                        }
-
-                        // Сберу нужно время "прожевать" файл, поэтому просто отдаем ID
-                        res.status(200).json({ 
-                            success: true, 
-                            provider: 'sber', 
-                            operationId: upData.id, 
-                            prompt: finalPrompt 
-                        });
-                    } catch (sberError) {
-                        res.status(500).json({ success: false, error: sberError.message });
-                    }
-                    return resolve(); // Обязательно выходим из промиса здесь
+                    res.status(200).json({ 
+                        success: true, 
+                        provider: 'sber', 
+                        operationId: upData.id, 
+                        prompt: finalPrompt 
+                    });
+                    return resolve();
                 }
+                
+                // Если движок не подошел
+                res.status(400).json({ success: false, error: "Неверный движок" });
+                return resolve();
+
+            } catch (e) {
+                console.error("POST Error:", e);
+                res.status(500).json({ success: false, error: e.message });
+                return resolve();
+            }
         });
     });
 }
