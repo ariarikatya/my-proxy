@@ -101,30 +101,30 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules);
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                // 1. POLLINATIONS (Используем быстрый метод через URL)
-                // 1. POLLINATIONS (Используем актуальный API из документации)
+                // 1. POLLINATIONS (Тест с твоим статичным URL)
 if (engine === 'pollinations') {
     const seed = Math.floor(Math.random() * 2147483647);
     
-    // Формируем URL согласно документации: /image/{prompt}
-    // Используем хост gen.pollinations.ai
-    const baseUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(finalPrompt)}`;
-    
-    const params = new URLSearchParams({
-        model: 'klein', // или 'flux', как в доке
+    // Твой URL с сайта (уже в Punycode, так что все ок)
+    const testImageUrl = 'https://xn----7sbbmh6bfciev.xn--p1ai/img/14avia.jpg';
+
+    const queryParams = new URLSearchParams({
+        model: 'flux', // Попробуем flux, он мощнее для ландшафтов
         width: '1024',
         height: '1024',
         seed: seed.toString(),
         enhance: 'true',
-        // Добавляем ключ прямо в URL, чтобы ссылка была рабочей
+        // Вставляем твою картинку как референс
+        image: testImageUrl, 
         key: POLLINATIONS_API_KEY 
     });
 
-    const imageUrl = `${baseUrl}?${params.toString()}`;
+    // Формируем итоговую ссылку
+    const imageUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(finalPrompt)}?${queryParams.toString()}`;
     
-    // Логируем для проверки в консоли Vercel (потом можно убрать)
-    console.log("Generated Pollinations URL:", imageUrl);
+    console.log("Generated Test URL:", imageUrl);
 
+    // Отправляем ответ сразу, серверу не нужно ничего скачивать
     res.status(200).json({ 
         success: true, 
         done: true, 
