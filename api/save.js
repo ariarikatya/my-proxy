@@ -1,9 +1,9 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
-import FormData from 'form-data';
+//import FormData from 'form-data';
 
-//process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 export const config = { 
     api: { bodyParser: false },
@@ -108,13 +108,14 @@ export default async function handler(req, res) {
                 // --- 2. POLLINATIONS (Image-to-Image Edit) ---
                 if (engine === 'pollinations') {
                     const seed = Math.floor(Math.random() * 2147483647);
-                    const pollFormData = new FormData();
                     
-                    // Добавляем данные
-                    pollFormData.append('image', fileData, {
-                        filename: 'image.jpg',
-                        contentType: 'image/jpeg',
-                    });
+                    // Используем встроенный в Node.js класс FormData (без импортов!)
+                    const pollFormData = new globalThis.FormData();
+                    
+                    // Превращаем Buffer в Blob, чтобы fetch сам расставил boundary
+                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+                    
+                    pollFormData.append('image', imageBlob, 'image.jpg');
                     pollFormData.append('prompt', finalPrompt);
                     pollFormData.append('model', 'klein'); 
                     pollFormData.append('seed', seed.toString());
@@ -122,11 +123,9 @@ export default async function handler(req, res) {
                     const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
-                            // ВАЖНО: Добавляем заголовки из FormData (boundary и прочее)
-                            ...pollFormData.getHeaders() 
+                            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
+                            // ВНИМАНИЕ: Content-Type НЕ ПИШЕМ! Fetch сам добавит его с нужным boundary
                         },
-                        // ВАЖНО: Отправляем через pollFormData, Node-fetch сам подхватит поток
                         body: pollFormData
                     });
 
