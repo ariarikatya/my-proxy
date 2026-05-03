@@ -99,72 +99,92 @@ export default async function handler(req, res) {
             }
 
             try {
-                const getVal = (val) => Array.isArray(val) ? val[0] : val;
-                const engine = getVal(fields.engine);
-                const style = getVal(fields.style);
-                const custom = getVal(fields.customRequest);
-                const modules = getVal(fields.modules);
-                
-                // Для Сбера лучше подготовить промпт на русском
-                const finalPrompt = engine === 'sber' 
-                    ? `ландшафт в стиле ${style}, модули: ${modules}. ${custom}`
-                    : `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
+    const getVal = (val) => Array.isArray(val) ? val[0] : val;
+    
+    // 1. Нормализуем значение: переводим в нижний регистр и убираем пробелы
+    const rawEngine = getVal(fields.engine);
+    const engine = rawEngine ? rawEngine.toLowerCase().trim() : '';
+    
+    const style = getVal(fields.style);
+    const custom = getVal(fields.customRequest);
+    const modules = getVal(fields.modules);
 
-                const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                if (!file) throw new Error("Файл не найден");
-                const fileData = fs.readFileSync(file.filepath);
+    // 2. Добавь этот лог — его будет видно в панели управления Vercel (Logs)
+    console.log(`DEBUG: Запрос получен. Движок: "${engine}", Стиль: "${style}"`);
 
-                if (engine === 'pollinations') {
-                    // ... твой код для pollinations без изменений ...
-                }
+    const finalPrompt = engine === 'sber' 
+        ? `ландшафт в стиле ${style}, модули: ${modules}. ${custom}`
+        : `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                if (engine === 'yandex') {
-                    // ... твой код для yandex без изменений ...
-                    const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
-                        method: "POST",
-                        headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
-                        body: JSON.stringify({
-                            modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
-                            messages: [
-                                { weight: 1, text: finalPrompt },
-                                { weight: 0.9, image: fileData.toString('base64') }
-                            ]
-                        })
-                    });
-                    const op = await yandRes.json();
-                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
-                    return resolve();
-                }
+    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+    if (!file) throw new Error("Файл не найден");
+    const fileData = fs.readFileSync(file.filepath);
 
-                if (engine === 'sber') {
-                    const token = await getSberToken();
-                    const sberFormData = new globalThis.FormData();
-                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
-                    sberFormData.append('file', imageBlob, 'image.jpg');
-                    sberFormData.append('purpose', 'general');
+    // 3. Используй цепочку if / else if, чтобы запрос не "пролетал" до ошибки 400
+    if (engine === 'pollinations') {
+        const response = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}`);
+        if (!response.ok) throw new Error("Pollinations не ответил");
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const base64Image = Buffer.from(arrayBuffer).toString('base64');
 
-                    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: sberFormData
-                    });
+        res.status(200).json({ 
+            success: true, 
+            done: true, 
+            provider: 'pollinations', 
+            image: base64Image 
+        });
+        return resolve();
 
-                    const upData = await upRes.json();
-                    if (!upRes.ok) throw new Error(upData.message || "Ошибка загрузки в Сбер");
+    } else if (engine === 'yandex') {
+        const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
+            method: "POST",
+            headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
+            body: JSON.stringify({
+                modelUri: `art://${YANDEX_FOLDER_ID}/yandex-art/latest`,
+                messages: [
+                    { weight: 1, text: finalPrompt },
+                    { weight: 0.9, image: fileData.toString('base64') }
+                ]
+            })
+        });
+        const op = await yandRes.json();
+        res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
+        return resolve();
 
-                    res.status(200).json({ 
-                        success: true, 
-                        provider: 'sber', 
-                        operationId: upData.id, 
-                        prompt: finalPrompt 
-                    });
-                    return resolve();
-                }
-                
-                res.status(400).json({ success: false, error: "Неверный движок" });
-                return resolve();
+    } else if (engine === 'sber') {
+        const token = await getSberToken();
+        const sberFormData = new globalThis.FormData();
+        const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+        sberFormData.append('file', imageBlob, 'image.jpg');
+        sberFormData.append('purpose', 'general');
 
-            } catch (e) {
+        const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: sberFormData
+        });
+
+        const upData = await upRes.json();
+        if (!upRes.ok) throw new Error(upData.message || "Ошибка загрузки в Сбер");
+
+        res.status(200).json({ 
+            success: true, 
+            provider: 'sber', 
+            operationId: upData.id, 
+            prompt: finalPrompt 
+        });
+        return resolve();
+
+    } else {
+        // Если дошли сюда, значит движок действительно не распознан
+        res.status(400).json({ 
+            success: false, 
+            error: `Неверный движок: "${engine}"` // Выводим само значение для теста
+        });
+        return resolve();
+    }
+                catch (e) {
                 res.status(500).json({ success: false, error: e.message });
                 return resolve();
             }
