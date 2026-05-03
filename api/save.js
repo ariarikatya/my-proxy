@@ -1,29 +1,30 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
-import FormData from 'form-data'; // Нужно добавить в package.json
+import FormData from 'form-data';
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+// Отключаем проверку сертификатов для работы со Сбером
+//process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 export const config = { 
     api: { bodyParser: false },
     maxDuration: 60 
 };
 
-const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-const CF_API_TOKEN = process.env.CF_API_TOKEN;
 const YANDEX_API_KEY = process.env.YANDEX_API_KEY;
 const YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID;
 const SBER_CLIENT_ID = process.env.SBER_CLIENT_ID;
 const SBER_CLIENT_SECRET = process.env.SBER_CLIENT_SECRET;
-const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY; // Добавь в переменные Vercel
+const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
+    // Настройка CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
+    // Функция получения токена GigaChat
     const getSberToken = async () => {
         const authKey = Buffer.from(`${SBER_CLIENT_ID}:${SBER_CLIENT_SECRET}`).toString('base64');
         const authRes = await fetch('https://ngw.devices.sberbank.ru:9443/api/v2/oauth', {
@@ -39,6 +40,7 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
+    // --- ОБРАБОТКА GET (Опрос статуса для Yandex/Sber) ---
     if (req.method === 'GET') {
         const { yandexId, sberId, prompt } = req.query;
         try {
@@ -77,12 +79,20 @@ export default async function handler(req, res) {
                 }
                 return res.status(200).json({ done: false });
             }
-        } catch (e) { return res.status(200).json({ done: false, error: e.message }); }
+        } catch (e) { 
+            return res.status(500).json({ done: false, error: e.message }); 
+        }
     }
 
+    // --- ОБРАБОТКА POST (Запуск генерации) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
+            if (err) {
+                res.status(500).json({ success: false, error: "Ошибка разбора формы" });
+                return resolve();
+            }
+
             try {
                 const getVal = (val) => Array.isArray(val) ? val[0] : val;
                 const engine = getVal(fields.engine);
@@ -91,36 +101,28 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules);
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
+                // 1. POLLINATIONS (Используем быстрый метод через URL)
+                if (engine === 'pollinations') {
+                    const seed = Math.floor(Math.random() * 1000000);
+                    // Используем ключ в URL, если это предусмотрено, или просто в логи
+                    const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&seed=${seed}&model=klein`;
+                    
+                    res.status(200).json({ 
+                        success: true, 
+                        done: true, 
+                        provider: 'pollinations', 
+                        image: imageUrl,
+                        isUrl: true
+                    });
+                    return resolve();
+                }
+
+                // ПОДГОТОВКА ФАЙЛА (Для Yandex и Sber)
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
 
-                // --- ИСПРАВЛЕННЫЙ БЛОК: POLLINATIONS (Максимально надежный) ---
-if (engine === 'pollinations') {
-    try {
-        // Мы берем рандомное число для сида, чтобы картинки были разными
-        const seed = Math.floor(Math.random() * 1000000);
-        
-        // Кодируем промпт для URL
-        const encodedPrompt = encodeURIComponent(finalPrompt);
-        
-        // Генерируем прямую ссылку на Pollinations
-        // Модель klein отлично работает через этот эндпоинт
-        const imageUrl = `https://pollinations.ai/p/${encodedPrompt}?width=1024&height=1024&seed=${seed}&model=klein`;
-
-        // Возвращаем успех немедленно
-        return res.status(200).json({ 
-            success: true, 
-            done: true, 
-            provider: 'pollinations', 
-            image: imageUrl,
-            isUrl: true
-        });
-    } catch (pollErr) {
-        return res.status(200).json({ success: false, error: "Pollinations error: " + pollErr.message });
-    }
-}
-
-                // --- ЯНДЕКС ---
+                // 2. YANDEX
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -134,10 +136,11 @@ if (engine === 'pollinations') {
                         })
                     });
                     const op = await yandRes.json();
-                    return res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
+                    res.status(200).json({ success: true, provider: 'yandex', operationId: op.id });
+                    return resolve();
                 }
 
-                // --- СБЕР (ПО УМОЛЧАНИЮ) ---
+                // 3. СБЕР (GigaChat)
                 const token = await getSberToken();
                 const sberFormData = new FormData();
                 sberFormData.append('file', fileData, 'image.jpg');
@@ -149,10 +152,13 @@ if (engine === 'pollinations') {
                     body: sberFormData
                 });
                 const upData = await upRes.json();
-                return res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                return resolve();
 
-            } catch (e) { res.status(200).json({ success: false, error: e.message }); }
-            resolve();
+            } catch (e) { 
+                res.status(500).json({ success: false, error: e.message }); 
+                resolve();
+            }
         });
     });
 }
