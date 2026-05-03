@@ -106,49 +106,47 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 // --- 2. POLLINATIONS (Image-to-Image Edit) ---
-                if (engine === 'pollinations') {
-                    const seed = Math.floor(Math.random() * 2147483647);
-                    
-                    // Используем встроенный в Node.js класс FormData (без импортов!)
-                    const pollFormData = new globalThis.FormData();
-                    
-                    // Превращаем Buffer в Blob, чтобы fetch сам расставил boundary
-                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
-                    
-                    pollFormData.append('image', imageBlob, 'image.jpg');
-                    pollFormData.append('prompt', finalPrompt);
-                    pollFormData.append('model', 'klein'); 
-                    pollFormData.append('seed', seed.toString());
+if (engine === 'pollinations') {
+    const seed = Math.floor(Math.random() * 2147483647);
+    
+    const pollFormData = new globalThis.FormData();
+    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+    
+    pollFormData.append('image', imageBlob, 'image.jpg');
+    pollFormData.append('prompt', finalPrompt);
+    pollFormData.append('model', 'klein'); 
+    pollFormData.append('seed', seed.toString());
 
-                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
-                            // ВНИМАНИЕ: Content-Type НЕ ПИШЕМ! Fetch сам добавит его с нужным boundary
-                        },
-                        body: pollFormData
-                    });
+    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
+        },
+        body: pollFormData
+    });
 
-                    if (!pollRes.ok) {
-                        const errorText = await pollRes.text();
-                        throw new Error(`Pollinations API error: ${pollRes.status} - ${errorText}`);
-                    }
+    if (!pollRes.ok) {
+        const errorText = await pollRes.text();
+        throw new Error(`Pollinations API error: ${pollRes.status} - ${errorText}`);
+    }
 
-                    const pollData = await pollRes.json();
+    const pollData = await pollRes.json();
+    const generatedUrl = pollData.data?.[0]?.url;
 
-                    if (pollData && pollData.data && pollData.data.length > 0) {
-                        res.status(200).json({ 
-                            success: true, 
-                            done: true, 
-                            provider: 'pollinations', 
-                            image: pollData.data[0].url, 
-                            isUrl: true 
-                        });
-                        return resolve();
-                    } else {
-                        throw new Error("Pollinations вернул пустой результат.");
-                    }
-                }
+    if (generatedUrl) {
+        console.log("Generated URL:", generatedUrl);
+        res.status(200).json({ 
+            success: true, 
+            done: true, 
+            provider: 'pollinations', 
+            image: String(generatedUrl), 
+            isUrl: true 
+        });
+        return resolve(); // Обязательно возвращаем resolve здесь
+    } else {
+        throw new Error("Pollinations вернул пустой результат.");
+    }
+}
 
                 // --- 3. YANDEX ---
                 if (engine === 'yandex') {
