@@ -106,12 +106,13 @@ export default async function handler(req, res) {
                 const fileData = fs.readFileSync(file.filepath);
 
                 // --- 2. POLLINATIONS (Image-to-Image Edit) ---
+                // --- 2. POLLINATIONS (Image-to-Image Edit) ---
                 if (engine === 'pollinations') {
                     const seed = Math.floor(Math.random() * 2147483647);
                     const pollFormData = new FormData();
                     pollFormData.append('image', fileData, 'image.jpg');
                     pollFormData.append('prompt', finalPrompt);
-                    pollFormData.append('model', 'flux');
+                    pollFormData.append('model', 'klein'); // Возвращаем klein по твоему запросу
                     pollFormData.append('seed', seed);
 
                     const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
@@ -122,9 +123,16 @@ export default async function handler(req, res) {
                         body: pollFormData
                     });
 
+                    // Сначала проверяем статус ответа сервера
+                    if (!pollRes.ok) {
+                        const errorText = await pollRes.text();
+                        throw new Error(`Pollinations API error: ${pollRes.status} - ${errorText}`);
+                    }
+
                     const pollData = await pollRes.json();
 
-                    if (pollData.data && pollData.data[0]) {
+                    // Проверяем наличие данных в ответе
+                    if (pollData && pollData.data && pollData.data.length > 0 && pollData.data[0].url) {
                         res.status(200).json({ 
                             success: true, 
                             done: true, 
@@ -134,7 +142,8 @@ export default async function handler(req, res) {
                         });
                         return resolve();
                     } else {
-                        throw new Error("Pollinations не вернул картинку");
+                        // Если пришел пустой массив или нет URL
+                        throw new Error("Pollinations вернул пустой результат. Попробуй изменить запрос.");
                     }
                 }
 
