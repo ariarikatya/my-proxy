@@ -105,36 +105,42 @@ export default async function handler(req, res) {
                 if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
 
-                // --- 2. POLLINATIONS (Image-to-Image Edit) ---
+               // --- 2. POLLINATIONS (Image-to-Image Edit / OpenAI-compatible) ---
 if (engine === 'pollinations') {
-    const seed = Math.floor(Math.random() * 2147483647);
-    
     const pollFormData = new globalThis.FormData();
+    
+    // Превращаем Buffer в Blob для корректной передачи через multipart
     const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
     
+    // Согласно документации OpenAI-compatible Image Edits:
+    // Поля обычно: image, prompt, model
     pollFormData.append('image', imageBlob, 'image.jpg');
     pollFormData.append('prompt', finalPrompt);
-    pollFormData.append('model', 'klein'); 
-    pollFormData.append('seed', seed.toString());
+    pollFormData.append('model', 'klein'); // На скрине видно: Input: text, image
 
     const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
         method: 'POST',
         headers: {
+            // ВАЖНО: Bearer YOUR_API_KEY
             'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
+            // Content-Type НЕ ставим, fetch сам добавит boundary для FormData
         },
         body: pollFormData
     });
 
+    const pollData = await pollRes.json();
+
+    // Если API вернуло ошибку в своем формате
     if (!pollRes.ok) {
-        const errorText = await pollRes.text();
-        throw new Error(`Pollinations API error: ${pollRes.status} - ${errorText}`);
+        console.error("Pollinations Error Details:", pollData);
+        throw new Error(pollData.error?.message || `Ошибка API: ${pollRes.status}`);
     }
 
-    const pollData = await pollRes.json();
+    // Извлекаем URL строго по документации: data[0].url
     const generatedUrl = pollData.data?.[0]?.url;
 
     if (generatedUrl) {
-        console.log("Generated URL:", generatedUrl);
+        console.log("Success! Generated URL:", generatedUrl);
         res.status(200).json({ 
             success: true, 
             done: true, 
@@ -142,9 +148,10 @@ if (engine === 'pollinations') {
             image: String(generatedUrl), 
             isUrl: true 
         });
-        return resolve(); // Обязательно возвращаем resolve здесь
+        return resolve();
     } else {
-        throw new Error("Pollinations вернул пустой результат.");
+        // Если вдруг data пустая, выводим весь ответ для диагностики
+        throw new Error(`Результат пуст. Ответ сервера: ${JSON.stringify(pollData)}`);
     }
 }
 
