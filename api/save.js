@@ -181,28 +181,43 @@ if (engine === 'pollinations') {
                 }
 
                 // --- 4. СБЕР (GigaChat) ---
-                if (engine === 'sber') {
-                    const token = await getSberToken();
-                    const sberFormData = new FormData();
-                    sberFormData.append('file', fileData, 'image.jpg');
-                    sberFormData.append('purpose', 'general');
+if (engine === 'sber') {
+    const token = await getSberToken();
+    
+    // Используем стандартный FormData
+    const sberFormData = new globalThis.FormData();
+    
+    // ПРЕВРАЩАЕМ Buffer в Blob (это исправит ошибку instance of Blob)
+    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
+    
+    // Добавляем файл и цель
+    sberFormData.append('file', imageBlob, 'image.jpg');
+    sberFormData.append('purpose', 'general');
 
-                    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: sberFormData
-                    });
-                    const upData = await upRes.json();
-                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
-                    return resolve();
-                }
+    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+        method: 'POST',
+        headers: { 
+            'Authorization': `Bearer ${token}` 
+            // Content-Type НЕ ставим, fetch сам настроит его для FormData
+        },
+        body: sberFormData
+    });
 
-                throw new Error("Неизвестный движок генерации");
+    const upData = await upRes.json();
 
-            } catch (e) { 
-                res.status(500).json({ success: false, error: e.message }); 
-                resolve();
-            }
+    if (!upRes.ok) {
+        throw new Error(upData.message || `Ошибка загрузки в Сбер: ${upRes.status}`);
+    }
+
+    // Возвращаем ID загруженного файла для последующей генерации
+    res.status(200).json({ 
+        success: true, 
+        provider: 'sber', 
+        operationId: upData.id, 
+        prompt: finalPrompt 
+    });
+    return resolve();
+}
         });
     });
 }
