@@ -3,8 +3,7 @@ import fs from 'fs';
 import { Buffer } from 'buffer';
 import FormData from 'form-data';
 
-// Отключаем проверку сертификатов для работы со Сбером
-//process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 export const config = { 
     api: { bodyParser: false },
@@ -40,7 +39,7 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ОБРАБОТКА GET (Опрос статуса для Yandex/Sber) ---
+    // --- ОБРАБОТКА GET (Опрос статуса) ---
     if (req.method === 'GET') {
         const { yandexId, sberId, prompt } = req.query;
         try {
@@ -101,44 +100,45 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules);
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                if (engine === 'pollinations') {
-    const seed = Math.floor(Math.random() * 2147483647);
-    
-    // Создаем FormData для отправки в Pollinations
-    const pollFormData = new FormData();
-    pollFormData.append('image', fileData, 'image.jpg'); // Передаем РЕАЛЬНЫЙ файл, который загрузил юзер
-    pollFormData.append('prompt', finalPrompt);
-    pollFormData.append('model', 'flux'); // Flux отлично справляется с правками
-    pollFormData.append('seed', seed);
-
-    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
-        },
-        body: pollFormData
-    });
-
-    const pollData = await pollRes.json();
-
-    if (pollData.data && pollData.data[0]) {
-        return res.status(200).json({ 
-            success: true, 
-            done: true, 
-            provider: 'pollinations', 
-            image: pollData.data[0].url, // Получаем URL готовой измененной картинки
-            isUrl: true 
-        });
-    } else {
-        throw new Error("Pollinations не вернул картинку");
-    }
-}
-                // ПОДГОТОВКА ФАЙЛА (Для Yandex и Sber)
+                // --- 1. ПОДГОТОВКА ФАЙЛА (Важно: делаем это ПЕРЕД использованием в движках) ---
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
 
-                // 2. YANDEX
+                // --- 2. POLLINATIONS (Image-to-Image Edit) ---
+                if (engine === 'pollinations') {
+                    const seed = Math.floor(Math.random() * 2147483647);
+                    const pollFormData = new FormData();
+                    pollFormData.append('image', fileData, 'image.jpg');
+                    pollFormData.append('prompt', finalPrompt);
+                    pollFormData.append('model', 'flux');
+                    pollFormData.append('seed', seed);
+
+                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
+                        },
+                        body: pollFormData
+                    });
+
+                    const pollData = await pollRes.json();
+
+                    if (pollData.data && pollData.data[0]) {
+                        res.status(200).json({ 
+                            success: true, 
+                            done: true, 
+                            provider: 'pollinations', 
+                            image: pollData.data[0].url, 
+                            isUrl: true 
+                        });
+                        return resolve();
+                    } else {
+                        throw new Error("Pollinations не вернул картинку");
+                    }
+                }
+
+                // --- 3. YANDEX ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
@@ -156,20 +156,24 @@ export default async function handler(req, res) {
                     return resolve();
                 }
 
-                // 3. СБЕР (GigaChat)
-                const token = await getSberToken();
-                const sberFormData = new FormData();
-                sberFormData.append('file', fileData, 'image.jpg');
-                sberFormData.append('purpose', 'general');
+                // --- 4. СБЕР (GigaChat) ---
+                if (engine === 'sber') {
+                    const token = await getSberToken();
+                    const sberFormData = new FormData();
+                    sberFormData.append('file', fileData, 'image.jpg');
+                    sberFormData.append('purpose', 'general');
 
-                const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: sberFormData
-                });
-                const upData = await upRes.json();
-                res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
-                return resolve();
+                    const upRes = await fetch('https://gigachat.devices.sberbank.ru/api/v1/files', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: sberFormData
+                    });
+                    const upData = await upRes.json();
+                    res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
+                    return resolve();
+                }
+
+                throw new Error("Неизвестный движок генерации");
 
             } catch (e) { 
                 res.status(500).json({ success: false, error: e.message }); 
