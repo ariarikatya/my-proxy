@@ -101,38 +101,37 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules);
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                // 1. POLLINATIONS (Тест с твоим статичным URL)
-if (engine === 'pollinations') {
+                if (engine === 'pollinations') {
     const seed = Math.floor(Math.random() * 2147483647);
     
-    // Твой URL с сайта (уже в Punycode, так что все ок)
-    const testImageUrl = 'https://xn----7sbbmh6bfciev.xn--p1ai/img/14avia.jpg';
+    // Создаем FormData для отправки в Pollinations
+    const pollFormData = new FormData();
+    pollFormData.append('image', fileData, 'image.jpg'); // Передаем РЕАЛЬНЫЙ файл, который загрузил юзер
+    pollFormData.append('prompt', finalPrompt);
+    pollFormData.append('model', 'flux'); // Flux отлично справляется с правками
+    pollFormData.append('seed', seed);
 
-    const queryParams = new URLSearchParams({
-        model: 'flux', // Попробуем flux, он мощнее для ландшафтов
-        width: '1024',
-        height: '1024',
-        seed: seed.toString(),
-        enhance: 'true',
-        // Вставляем твою картинку как референс
-        image: testImageUrl, 
-        key: POLLINATIONS_API_KEY 
+    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
+        },
+        body: pollFormData
     });
 
-    // Формируем итоговую ссылку
-    const imageUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(finalPrompt)}?${queryParams.toString()}`;
-    
-    console.log("Generated Test URL:", imageUrl);
+    const pollData = await pollRes.json();
 
-    // Отправляем ответ сразу, серверу не нужно ничего скачивать
-    res.status(200).json({ 
-        success: true, 
-        done: true, 
-        provider: 'pollinations', 
-        image: imageUrl,
-        isUrl: true
-    });
-    return resolve();
+    if (pollData.data && pollData.data[0]) {
+        return res.status(200).json({ 
+            success: true, 
+            done: true, 
+            provider: 'pollinations', 
+            image: pollData.data[0].url, // Получаем URL готовой измененной картинки
+            isUrl: true 
+        });
+    } else {
+        throw new Error("Pollinations не вернул картинку");
+    }
 }
                 // ПОДГОТОВКА ФАЙЛА (Для Yandex и Sber)
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
