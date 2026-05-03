@@ -109,38 +109,36 @@ export default async function handler(req, res) {
 if (engine === 'pollinations') {
     const pollFormData = new globalThis.FormData();
     
-    // Превращаем Buffer в Blob для корректной передачи через multipart
     const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
     
-    // Согласно документации OpenAI-compatible Image Edits:
-    // Поля обычно: image, prompt, model
     pollFormData.append('image', imageBlob, 'image.jpg');
     pollFormData.append('prompt', finalPrompt);
-    pollFormData.append('model', 'klein'); // На скрине видно: Input: text, image
+    pollFormData.append('model', 'klein');
+    // ЯВНО указываем, что хотим URL, чтобы API не вредничало
+    pollFormData.append('response_format', 'url'); 
 
     const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
         method: 'POST',
         headers: {
-            // ВАЖНО: Bearer YOUR_API_KEY
             'Authorization': `Bearer ${POLLINATIONS_API_KEY}`
-            // Content-Type НЕ ставим, fetch сам добавит boundary для FormData
         },
         body: pollFormData
     });
 
     const pollData = await pollRes.json();
 
-    // Если API вернуло ошибку в своем формате
     if (!pollRes.ok) {
         console.error("Pollinations Error Details:", pollData);
         throw new Error(pollData.error?.message || `Ошибка API: ${pollRes.status}`);
     }
 
-    // Извлекаем URL строго по документации: data[0].url
-    const generatedUrl = pollData.data?.[0]?.url;
+    // УНИВЕРСАЛЬНАЯ ПРОВЕРКА (Ловим и URL, и Base64)
+    const result = pollData.data?.[0];
+    const generatedUrl = result?.url;
+    const generatedBase64 = result?.b64_json;
 
     if (generatedUrl) {
-        console.log("Success! Generated URL:", generatedUrl);
+        // Если пришла ссылка
         res.status(200).json({ 
             success: true, 
             done: true, 
@@ -148,13 +146,22 @@ if (engine === 'pollinations') {
             image: String(generatedUrl), 
             isUrl: true 
         });
-        return resolve();
+    } else if (generatedBase64) {
+        // Если всё равно пришел Base64 (несмотря на нашу просьбу)
+        // Добавляем префикс, чтобы фронтенд (Tilda/FlutterFlow) сразу понял, что это картинка
+        const base64Image = `data:image/jpeg;base64,${generatedBase64}`;
+        res.status(200).json({ 
+            success: true, 
+            done: true, 
+            provider: 'pollinations', 
+            image: base64Image, 
+            isUrl: false 
+        });
     } else {
-        // Если вдруг data пустая, выводим весь ответ для диагностики
-        throw new Error(`Результат пуст. Ответ сервера: ${JSON.stringify(pollData)}`);
+        throw new Error(`Данные изображения не найдены в ответе: ${JSON.stringify(pollData)}`);
     }
+    return resolve();
 }
-
                 // --- 3. YANDEX ---
                 if (engine === 'yandex') {
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
