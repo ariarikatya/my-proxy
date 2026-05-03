@@ -102,21 +102,38 @@ export default async function handler(req, res) {
                 const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
                 // 1. POLLINATIONS (Используем быстрый метод через URL)
-                if (engine === 'pollinations') {
-                    const seed = Math.floor(Math.random() * 1000000);
-                    // Используем ключ в URL, если это предусмотрено, или просто в логи
-                    const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(finalPrompt)}?width=1024&height=1024&seed=${seed}&model=klein`;
-                    
-                    res.status(200).json({ 
-                        success: true, 
-                        done: true, 
-                        provider: 'pollinations', 
-                        image: imageUrl,
-                        isUrl: true
-                    });
-                    return resolve();
-                }
+                // 1. POLLINATIONS (Используем актуальный API из документации)
+if (engine === 'pollinations') {
+    const seed = Math.floor(Math.random() * 2147483647);
+    
+    // Формируем URL согласно документации: /image/{prompt}
+    // Используем хост gen.pollinations.ai
+    const baseUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(finalPrompt)}`;
+    
+    const params = new URLSearchParams({
+        model: 'klein', // или 'flux', как в доке
+        width: '1024',
+        height: '1024',
+        seed: seed.toString(),
+        enhance: 'true',
+        // Добавляем ключ прямо в URL, чтобы ссылка была рабочей
+        key: POLLINATIONS_API_KEY 
+    });
 
+    const imageUrl = `${baseUrl}?${params.toString()}`;
+    
+    // Логируем для проверки в консоли Vercel (потом можно убрать)
+    console.log("Generated Pollinations URL:", imageUrl);
+
+    res.status(200).json({ 
+        success: true, 
+        done: true, 
+        provider: 'pollinations', 
+        image: imageUrl,
+        isUrl: true
+    });
+    return resolve();
+}
                 // ПОДГОТОВКА ФАЙЛА (Для Yandex и Sber)
                 const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                 if (!file) throw new Error("Файл не найден");
