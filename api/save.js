@@ -1,6 +1,6 @@
 import { IncomingForm } from 'formidable';
+import fs from 'fs';
 import { Buffer } from 'buffer';
-import fs from 'fs'; // ДОБАВИЛИ ЭТУ СТРОЧКУ
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
                 } else {
                     const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                     if (!file) throw new Error("Фото не выбрано");
-                    imageBuffer = fs.readFileSync(file.filepath); // Теперь fs определен
+                    imageBuffer = fs.readFileSync(file.filepath);
                 }
 
                 const pollFormData = new globalThis.FormData();
@@ -57,15 +57,14 @@ export default async function handler(req, res) {
                 });
 
                 const pollData = await pollRes.json();
+                if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+
                 const resultUrl = pollData.data?.[0]?.url;
 
                 if (resultUrl) {
-                    res.status(200).json({ 
-                        success: true, 
-                        image: resultUrl 
-                    });
+                    res.status(200).json({ success: true, image: resultUrl });
                 } else {
-                    throw new Error("Ошибка Pollinations");
+                    throw new Error("API не вернул картинку");
                 }
                 return resolve();
             } catch (e) {
