@@ -97,38 +97,55 @@ export default async function handler(req, res) {
                 if (!file) throw new Error("Файл не найден");
                 const fileData = fs.readFileSync(file.filepath);
 
-                // --- 1. POLLINATIONS (Твой рабочий вариант) ---
-                if (engine === 'pollinations') {
-                    const pollFormData = new globalThis.FormData();
-                    const imageBlob = new Blob([fileData], { type: 'image/jpeg' });
-                    
-                    pollFormData.append('image', imageBlob, 'image.jpg');
-                    pollFormData.append('prompt', finalPrompt);
-                    pollFormData.append('model', 'klein');
-                    pollFormData.append('response_format', 'url'); 
+                // --- 1. POLLINATIONS ---
+if (engine === 'pollinations') {
+    let imageBuffer;
 
-                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
-                        body: pollFormData
-                    });
+    // Проверяем: пришел файл или ссылка от "Доработки"
+    const imageUrl = getVal(fields.image_url);
+    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
 
-                    const pollData = await pollRes.json();
-                    if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+    if (imageUrl) {
+        // Если это доработка, скачиваем картинку по ссылке
+        const imgRes = await fetch(imageUrl);
+        const arrayBuffer = await imgRes.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+    } else if (file) {
+        // Если это новая загрузка
+        imageBuffer = fs.readFileSync(file.filepath);
+    } else {
+        throw new Error("Изображение не найдено");
+    }
 
-                    const result = pollData.data?.[0];
-                    const imageOutput = result?.url || result?.b64_json;
+    const pollFormData = new globalThis.FormData();
+    const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+    
+    pollFormData.append('image', imageBlob, 'image.jpg');
+    pollFormData.append('prompt', finalPrompt);
+    pollFormData.append('model', 'klein');
+    pollFormData.append('response_format', 'url'); 
 
-                    if (!imageOutput) throw new Error("Данные изображения не найдены");
+    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
+        body: pollFormData
+    });
 
-                    res.status(200).json({ 
-                        success: true, 
-                        done: true, 
-                        provider: 'pollinations', 
-                        image: imageOutput, 
-                        isUrl: !!result?.url 
-                    });
-                    return resolve();
+    const pollData = await pollRes.json();
+    if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+
+    const result = pollData.data?.[0];
+    const imageOutput = result?.url || result?.b64_json;
+
+    res.status(200).json({ 
+        success: true, 
+        done: true, 
+        provider: 'pollinations', 
+        image: imageOutput, 
+        isUrl: !!result?.url 
+    });
+    return resolve();
+}
 
                 // --- 2. YANDEX ---
                 } else if (engine === 'yandex') {
