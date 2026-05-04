@@ -20,7 +20,10 @@ export default async function handler(req, res) {
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
-            if (err) { res.status(500).json({ success: false, error: "Ошибка разбора формы" }); return resolve(); }
+            if (err) { 
+                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
+                return resolve(); 
+            }
 
             try {
                 const getVal = (val) => Array.isArray(val) ? val[0] : val;
@@ -46,7 +49,7 @@ export default async function handler(req, res) {
                 pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
                 pollFormData.append('prompt', finalPrompt);
                 pollFormData.append('model', 'klein');
-                // Возвращаем b64_json для стабильности, как было раньше
+                // ВОЗВРАЩАЕМ b64_json, как было в твоем рабочем коде
                 pollFormData.append('response_format', 'b64_json'); 
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
@@ -59,10 +62,12 @@ export default async function handler(req, res) {
                 if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
 
                 const result = pollData.data?.[0];
-                // Возвращаем ровно тот формат, который ждет твой фронт
+
+                // Формат ответа теперь полностью совпадает с тем, что ждет твой фронтенд
                 res.status(200).json({ 
                     success: true, 
                     done: true, 
+                    provider: 'pollinations', 
                     image: result?.b64_json || result?.url, 
                     isUrl: !!result?.url 
                 });
