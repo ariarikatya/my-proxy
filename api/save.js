@@ -1,5 +1,6 @@
 import { IncomingForm } from 'formidable';
 import { Buffer } from 'buffer';
+import fs from 'fs'; // ДОБАВИЛИ ЭТУ СТРОЧКУ
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
                 } else {
                     const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                     if (!file) throw new Error("Фото не выбрано");
-                    imageBuffer = fs.readFileSync(file.filepath);
+                    imageBuffer = fs.readFileSync(file.filepath); // Теперь fs определен
                 }
 
                 const pollFormData = new globalThis.FormData();
@@ -59,7 +60,6 @@ export default async function handler(req, res) {
                 const resultUrl = pollData.data?.[0]?.url;
 
                 if (resultUrl) {
-                    // Просто возвращаем результат. Запись лида сделаем во фронтенде!
                     res.status(200).json({ 
                         success: true, 
                         image: resultUrl 
