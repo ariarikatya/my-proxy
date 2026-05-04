@@ -36,7 +36,6 @@ export default async function handler(req, res) {
         return data.access_token;
     };
 
-    // --- ОБРАБОТКА GET (ПОЛЛИНГ ДЛЯ ЯНДЕКСА И СБЕРА) ---
     if (req.method === 'GET') {
         const { yandexId, sberId, prompt } = req.query;
         try {
@@ -76,7 +75,6 @@ export default async function handler(req, res) {
         } catch (e) { return res.status(500).json({ done: false, error: e.message }); }
     }
 
-    // --- ОБРАБОТКА POST (ОСНОВНОЙ ЗАПРОС) ---
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
@@ -88,67 +86,57 @@ export default async function handler(req, res) {
                 const style = getVal(fields.style);
                 const custom = getVal(fields.customRequest);
                 const modules = getVal(fields.modules);
+                const imageUrl = getVal(fields.image_url);
 
                 const finalPrompt = engine === 'sber' 
                     ? `ландшафт в стиле ${style}, модули: ${modules}. ${custom}`
                     : `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
 
-                const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                if (!file) throw new Error("Файл не найден");
-                const fileData = fs.readFileSync(file.filepath);
-
                 // --- 1. POLLINATIONS ---
-if (engine === 'pollinations') {
-    let imageBuffer;
+                if (engine === 'pollinations') {
+                    let imageBuffer;
+                    if (imageUrl) {
+                        // Если это доработка, скачиваем картинку
+                        const imgRes = await fetch(imageUrl);
+                        const arrayBuffer = await imgRes.arrayBuffer();
+                        imageBuffer = Buffer.from(arrayBuffer);
+                    } else {
+                        const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                        if (!file) throw new Error("Фото не выбрано");
+                        imageBuffer = fs.readFileSync(file.filepath);
+                    }
 
-    // Проверяем: пришел файл или ссылка от "Доработки"
-    const imageUrl = getVal(fields.image_url);
-    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                    const pollFormData = new globalThis.FormData();
+                    pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
+                    pollFormData.append('prompt', finalPrompt);
+                    pollFormData.append('model', 'klein');
+                    pollFormData.append('response_format', 'url'); 
 
-    if (imageUrl) {
-        // Если это доработка, скачиваем картинку по ссылке
-        const imgRes = await fetch(imageUrl);
-        const arrayBuffer = await imgRes.arrayBuffer();
-        imageBuffer = Buffer.from(arrayBuffer);
-    } else if (file) {
-        // Если это новая загрузка
-        imageBuffer = fs.readFileSync(file.filepath);
-    } else {
-        throw new Error("Изображение не найдено");
-    }
+                    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
+                        body: pollFormData
+                    });
 
-    const pollFormData = new globalThis.FormData();
-    const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
-    
-    pollFormData.append('image', imageBlob, 'image.jpg');
-    pollFormData.append('prompt', finalPrompt);
-    pollFormData.append('model', 'klein');
-    pollFormData.append('response_format', 'url'); 
+                    const pollData = await pollRes.json();
+                    if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
 
-    const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
-        body: pollFormData
-    });
-
-    const pollData = await pollRes.json();
-    if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
-
-    const result = pollData.data?.[0];
-    const imageOutput = result?.url || result?.b64_json;
-
-    res.status(200).json({ 
-        success: true, 
-        done: true, 
-        provider: 'pollinations', 
-        image: imageOutput, 
-        isUrl: !!result?.url 
-    });
-    return resolve();
-}
+                    const result = pollData.data?.[0];
+                    res.status(200).json({ 
+                        success: true, 
+                        done: true, 
+                        provider: 'pollinations', 
+                        image: result?.url || result?.b64_json, 
+                        isUrl: !!result?.url 
+                    });
+                    return resolve();
 
                 // --- 2. YANDEX ---
                 } else if (engine === 'yandex') {
+                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                    if (!file) throw new Error("Фото не выбрано");
+                    const fileData = fs.readFileSync(file.filepath);
+
                     const yandRes = await fetch("https://llm.api.cloud.yandex.net/foundationModels/v1/imageGenerationAsync", {
                         method: "POST",
                         headers: { "Authorization": `Api-Key ${YANDEX_API_KEY}`, "x-folder-id": YANDEX_FOLDER_ID },
@@ -163,6 +151,10 @@ if (engine === 'pollinations') {
 
                 // --- 3. SBER ---
                 } else if (engine === 'sber') {
+                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                    if (!file) throw new Error("Фото не выбрано");
+                    const fileData = fs.readFileSync(file.filepath);
+
                     const token = await getSberToken();
                     const sberFormData = new globalThis.FormData();
                     sberFormData.append('file', new Blob([fileData], { type: 'image/jpeg' }), 'image.jpg');
@@ -172,13 +164,11 @@ if (engine === 'pollinations') {
                         method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: sberFormData
                     });
                     const upData = await upRes.json();
-                    if (!upRes.ok) throw new Error(upData.message || "Ошибка Сбера");
-
                     res.status(200).json({ success: true, provider: 'sber', operationId: upData.id, prompt: finalPrompt });
                     return resolve();
 
                 } else {
-                    res.status(400).json({ success: false, error: `Неверный движок: "${engine}"` });
+                    res.status(400).json({ success: false, error: "Движок не выбран" });
                     return resolve();
                 }
 
