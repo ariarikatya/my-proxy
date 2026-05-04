@@ -20,10 +20,7 @@ export default async function handler(req, res) {
     const form = new IncomingForm();
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
-            if (err) { 
-                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
-                return resolve(); 
-            }
+            if (err) { res.status(500).json({ success: false, error: "Ошибка разбора формы" }); return resolve(); }
 
             try {
                 const getVal = (val) => Array.isArray(val) ? val[0] : val;
@@ -37,7 +34,8 @@ export default async function handler(req, res) {
                 let imageBuffer;
                 if (imageUrl) {
                     const imgRes = await fetch(imageUrl);
-                    imageBuffer = Buffer.from(await imgRes.arrayBuffer());
+                    const arrayBuffer = await imgRes.arrayBuffer();
+                    imageBuffer = Buffer.from(arrayBuffer);
                 } else {
                     const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
                     if (!file) throw new Error("Фото не выбрано");
@@ -48,7 +46,8 @@ export default async function handler(req, res) {
                 pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
                 pollFormData.append('prompt', finalPrompt);
                 pollFormData.append('model', 'klein');
-                pollFormData.append('response_format', 'url'); 
+                // Возвращаем b64_json для стабильности, как было раньше
+                pollFormData.append('response_format', 'b64_json'); 
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
@@ -59,14 +58,16 @@ export default async function handler(req, res) {
                 const pollData = await pollRes.json();
                 if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
 
-                const resultUrl = pollData.data?.[0]?.url;
-
-                if (resultUrl) {
-                    res.status(200).json({ success: true, image: resultUrl });
-                } else {
-                    throw new Error("API не вернул картинку");
-                }
+                const result = pollData.data?.[0];
+                // Возвращаем ровно тот формат, который ждет твой фронт
+                res.status(200).json({ 
+                    success: true, 
+                    done: true, 
+                    image: result?.b64_json || result?.url, 
+                    isUrl: !!result?.url 
+                });
                 return resolve();
+
             } catch (e) {
                 res.status(500).json({ success: false, error: e.message });
                 return resolve();
