@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
     const { id } = req.query;
-    const YANDEX_API_KEY = 'AQVN3DbXYRvQvQg9p2ylCnR5eSVfi_hfQqnJhzQK'; 
+    const YANDEX_API_KEY = ''; 
 
     try {
         const response = await fetch(`https://llm.api.cloud.yandex.net/operations/${id}`, {
