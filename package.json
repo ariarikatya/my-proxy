@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
+    "@vercel/blob": "^0.23.4",
     "form-data": "^4.0.0",
     "formidable": "^3.5.1",
     "fs": "0.0.1-security",
