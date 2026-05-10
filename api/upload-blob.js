@@ -3,36 +3,32 @@ import { put, list, del } from '@vercel/blob';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // На всякий случай увеличим лимит входящего JSON
+      sizeLimit: '10mb',
     },
   },
 };
 
 export default async function handler(req, res) {
-    // 1. Полный набор заголовков
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Max-Age', '86400');
-    res.setHeader(
-        'Access-Control-Allow-Headers',
-        'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization'
-    );
+    // Явно разрешаем домен твоего сайта
+    res.setHeader('Access-Control-Allow-Origin', '*'); 
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,PUT,PATCH,DELETE');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    // 2. Мгновенный ответ на Preflight
+    // Если это предварительный запрос (OPTIONS) - отвечаем 200 OK и ПУСТОТОЙ
     if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        res.status(200).send('ok');
+        return;
     }
 
     if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Method not allowed' });
+        return res.status(405).json({ error: 'Используйте POST' });
     }
 
     try {
         const { image, phone } = req.body;
-        if (!image) throw new Error("Image data is missing");
+        if (!image) return res.status(400).json({ error: "Нет данных изображения" });
 
-        // Очистка старых файлов (лимит 900Мб)
+        // Очистка старых (лимит 900Мб)
         const { blobs } = await list();
         const totalSize = blobs.reduce((acc, b) => acc + b.size, 0);
         if (totalSize > 900 * 1024 * 1024) {
@@ -40,7 +36,6 @@ export default async function handler(req, res) {
             for (const old of oldBlobs) await del(old.url);
         }
 
-        // Загрузка
         const buffer = Buffer.from(image.replace(/^data:image\/\w+;base64,/, ""), 'base64');
         const fileName = `wehappy/${phone || 'guest'}_${Date.now()}.jpg`;
         
@@ -51,6 +46,7 @@ export default async function handler(req, res) {
 
         return res.status(200).json({ success: true, url: url });
     } catch (e) {
+        console.error("Blob Error:", e.message);
         return res.status(500).json({ success: false, error: e.message });
     }
 }
