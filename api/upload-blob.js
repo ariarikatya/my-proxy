@@ -40,7 +40,7 @@ export default async function handler(req, res) {
         const fileName = `wehappy/${phone || 'guest'}_${Date.now()}.jpg`;
         
         const { url } = await put(fileName, buffer, {
-            access: 'public',
+            addRandomSuffix: true,
             contentType: 'image/jpeg'
         });
 
