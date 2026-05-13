@@ -4,79 +4,91 @@ import { Buffer } from 'buffer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-export const config = { 
-    api: { bodyParser: false },
-    maxDuration: 60 
+export const config = { 
+    api: { bodyParser: false },
+    maxDuration: 60 
 };
 
 const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const form = new IncomingForm();
-    return new Promise((resolve) => {
-        form.parse(req, async (err, fields, files) => {
-            if (err) { 
-                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
-                return resolve(); 
-            }
+    const form = new IncomingForm();
+    return new Promise((resolve) => {
+        form.parse(req, async (err, fields, files) => {
+            if (err) { 
+                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
+                return resolve(); 
+            }
 
-            try {
-                const getVal = (val) => Array.isArray(val) ? val[0] : val;
-                const style = getVal(fields.style);
-                const custom = getVal(fields.customRequest);
-                const modules = getVal(fields.modules);
-                const imageUrl = getVal(fields.image_url);
+            try {
+                const getVal = (val) => Array.isArray(val) ? val[0] : val;
+                const style = getVal(fields.style);
+                const custom = getVal(fields.customRequest);
+                const modules = getVal(fields.modules); // Здесь приходят пруд, розы и т.д.
+                const imageUrl = getVal(fields.image_url);
 
-                const finalPrompt = `Landscape design, ${style} style, ${modules}. ${custom}. Photorealistic, 8k.`;
+                // СОСТАВЛЯЕМ ПРАВИЛЬНЫЙ ПРОМТ
+                let promptParts = ["Landscape design"];
+                
+                if (style) promptParts.push(`${style} style`);
+                
+                // Добавляем выбранные модули (розы, пруды), если они есть
+                if (modules) promptParts.push(`featuring ${modules}`);
+                
+                if (custom) promptParts.push(`${custom}`);
 
-                let imageBuffer;
-                if (imageUrl) {
-                    const imgRes = await fetch(imageUrl);
-                    const arrayBuffer = await imgRes.arrayBuffer();
-                    imageBuffer = Buffer.from(arrayBuffer);
-                } else {
-                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                    if (!file) throw new Error("Фото не выбрано");
-                    imageBuffer = fs.readFileSync(file.filepath);
-                }
+                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping");
 
-                const pollFormData = new globalThis.FormData();
-                pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
-                pollFormData.append('prompt', finalPrompt);
-                pollFormData.append('model', 'klein');
-                // ВОЗВРАЩАЕМ b64_json, как было в твоем рабочем коде
-                pollFormData.append('response_format', 'b64_json'); 
+                const finalPrompt = promptParts.join(', ');
 
-                const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
-                    body: pollFormData
-                });
+                console.log("Финальный промт, отправляемый в API:", finalPrompt);
 
-                const pollData = await pollRes.json();
-                if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+                let imageBuffer;
+                if (imageUrl) {
+                    const imgRes = await fetch(imageUrl);
+                    const arrayBuffer = await imgRes.arrayBuffer();
+                    imageBuffer = Buffer.from(arrayBuffer);
+                } else {
+                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                    if (!file) throw new Error("Фото не выбрано");
+                    imageBuffer = fs.readFileSync(file.filepath);
+                }
 
-                const result = pollData.data?.[0];
+                const pollFormData = new globalThis.FormData();
+                pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
+                pollFormData.append('prompt', finalPrompt);
+                pollFormData.append('model', 'klein');
+                pollFormData.append('response_format', 'b64_json'); 
 
-                // Формат ответа теперь полностью совпадает с тем, что ждет твой фронтенд
-                res.status(200).json({ 
-                    success: true, 
-                    done: true, 
-                    provider: 'pollinations', 
-                    image: result?.b64_json || result?.url, 
-                    isUrl: !!result?.url 
-                });
-                return resolve();
+                const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
+                    body: pollFormData
+                });
 
-            } catch (e) {
-                res.status(500).json({ success: false, error: e.message });
-                return resolve();
-            }
-        });
-    });
+                const pollData = await pollRes.json();
+                if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+
+                const result = pollData.data?.[0];
+
+                res.status(200).json({ 
+                    success: true, 
+                    done: true, 
+                    provider: 'pollinations', 
+                    image: result?.b64_json || result?.url, 
+                    isUrl: !!result?.url 
+                });
+                return resolve();
+
+            } catch (e) {
+                res.status(500).json({ success: false, error: e.message });
+                return resolve();
+            }
+        });
+    });
 }
