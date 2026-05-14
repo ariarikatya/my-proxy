@@ -12,6 +12,22 @@ export const config = { 
 const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
+  const styleTranslations = {
+    'эконом стиль': 'minimalist functional low-budget garden',
+    'английский пейзажный стиль': 'English landscape garden, natural cottage style',
+    'китайский азиатский стиль': 'traditional Chinese garden, pagoda, koi pond, bamboo, stone lanterns',
+    'хай-тек': 'high-tech modern garden, geometric lines, concrete and steel elements',
+    'кантри деревенский стиль': 'rustic country garden, wildflowers, wooden fences',
+    'классический регулярный стиль': 'French formal garden, symmetrical hedges, classical statues',
+    'прованс': 'French Provence style, lavender fields, stone walls',
+    'скандинавский стиль': 'Scandinavian garden, pine trees, minimalist wood deck',
+    'средиземноморский стиль': 'Mediterranean garden, terracotta pots, cypress trees, gravel paths',
+    'минимализм': 'ultra-modern minimalist landscape, clean lines',
+    'природный экостиль': 'wild eco-style garden, biodiversity, natural woodland',
+    'модерн': 'art nouveau landscaping, curved paths, decorative ironwork',
+    'колониальный стиль': 'colonial plantation garden, large verandas, tropical plants',
+    'мавританский стиль': 'Moorish courtyard garden, colorful tiles, central fountain'
+};
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -33,20 +49,25 @@ export default async function handler(req, res) {
                 const imageUrl = getVal(fields.image_url);
 
                 // СОСТАВЛЯЕМ ПРАВИЛЬНЫЙ ПРОМТ
-                let promptParts = ["Landscape design"];
-                
-                if (style) promptParts.push(`${style} style`);
-                
-                // Добавляем выбранные модули (розы, пруды), если они есть
-                if (modules) promptParts.push(`featuring ${modules}`);
-                
-                if (custom) promptParts.push(`${custom}`);
+                let promptParts = ["Landscape design"];
+                
+                if (style) {
+                    // ПРОВЕРКА: Если есть перевод в словаре — берем его, если нет — оставляем оригинал
+                    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
+                    promptParts.push(`${translatedStyle} style`);
+                }
+                
+                // Добавляем выбранные модули (розы, пруды), если они есть
+                if (modules) promptParts.push(`featuring ${modules}`);
+                
+                if (custom) promptParts.push(`${custom}`);
 
-                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping");
+                // Усиливаем промт профессиональными ключевыми словами
+                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping, cinematic lighting, architectural photography");
 
-                const finalPrompt = promptParts.join(', ');
+                const finalPrompt = promptParts.join(', ');
 
-                console.log("Финальный промт, отправляемый в API:", finalPrompt);
+                console.log("Финальный промт, отправляемый в API:", finalPrompt);
 
                 let imageBuffer;
                 if (imageUrl) {
