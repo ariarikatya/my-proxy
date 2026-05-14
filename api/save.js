@@ -13,7 +13,6 @@ const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
   const styleTranslations = {
-const styleTranslations = {
     'эконом стиль': 'simple functional garden, budget-friendly materials',
     'английский пейзажный стиль': 'English landscape style, natural aesthetic',
     'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere',
