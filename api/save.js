@@ -13,20 +13,21 @@ const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
   const styleTranslations = {
-    'эконом стиль': 'minimalist functional low-budget garden',
-    'английский пейзажный стиль': 'English landscape garden, natural cottage style',
-    'китайский азиатский стиль': 'traditional Chinese garden, pagoda, koi pond, bamboo, stone lanterns',
-    'хай-тек': 'high-tech modern garden, geometric lines, concrete and steel elements',
-    'кантри деревенский стиль': 'rustic country garden, wildflowers, wooden fences',
-    'классический регулярный стиль': 'French formal garden, symmetrical hedges, classical statues',
-    'прованс': 'French Provence style, lavender fields, stone walls',
-    'скандинавский стиль': 'Scandinavian garden, pine trees, minimalist wood deck',
-    'средиземноморский стиль': 'Mediterranean garden, terracotta pots, cypress trees, gravel paths',
-    'минимализм': 'ultra-modern minimalist landscape, clean lines',
-    'природный экостиль': 'wild eco-style garden, biodiversity, natural woodland',
-    'модерн': 'art nouveau landscaping, curved paths, decorative ironwork',
-    'колониальный стиль': 'colonial plantation garden, large verandas, tropical plants',
-    'мавританский стиль': 'Moorish courtyard garden, colorful tiles, central fountain'
+const styleTranslations = {
+    'эконом стиль': 'simple functional garden, budget-friendly materials',
+    'английский пейзажный стиль': 'English landscape style, natural aesthetic',
+    'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere',
+    'хай-тек': 'high-tech style, modern materials, sharp geometric lines',
+    'кантри деревенский стиль': 'rustic country style, cozy rural atmosphere',
+    'классический регулярный стиль': 'classic formal style, symmetrical layout',
+    'прованс': 'French Provence style, southern European garden mood',
+    'скандинавский стиль': 'Scandinavian style, Nordic minimalism, natural textures',
+    'средиземноморский стиль': 'Mediterranean style, warm coastal atmosphere',
+    'минимализм': 'minimalist style, clean simple lines, spacious',
+    'природный экостиль': 'natural eco-style, sustainable look',
+    'модерн': 'modernist landscape, elegant flowing shapes',
+    'колониальный стиль': 'colonial garden style, traditional estate look',
+    'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
 };
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
