@@ -1,4 +1,4 @@
-// api/img.js
+import fetch from 'node-fetch';
 export default async function handler(req, res) {
     // Разрешаем всем забирать эту картинку (включая AmoCRM)
     res.setHeader('Access-Control-Allow-Origin', '*');
