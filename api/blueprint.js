@@ -54,14 +54,21 @@ Russian Typography & Adaptive Legend Table:
 
                 console.log("Отправка запроса чертежа в Pollinations (gpt-image-2)...");
 
+                // --- ОБРАБОТКА КАРТИНКИ НА БЭКЕНДЕ ---
                 let imageBuffer;
-                if (imageUrl) {
+                const imageBase64 = getVal(fields.image_base64);
+
+                if (imageBase64 && imageBase64.startsWith('data:image')) {
+                    // Если пришел чистый текст base64 с фронтенда, убираем префикс и пишем в буфер
+                    const base64Data = imageBase64.split(',')[1];
+                    imageBuffer = Buffer.from(base64Data, 'base64');
+                } else if (imageUrl) {
                     const imgRes = await fetch(imageUrl);
                     const arrayBuffer = await imgRes.arrayBuffer();
                     imageBuffer = Buffer.from(arrayBuffer);
                 } else {
                     const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                    if (!file) throw new Error("Фото не получено");
+                    if (!file) throw new Error("Фото не получено. Передайте файл, image_url или image_base64");
                     imageBuffer = fs.readFileSync(file.filepath);
                 }
 
