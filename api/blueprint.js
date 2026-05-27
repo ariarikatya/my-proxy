@@ -18,9 +18,6 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const form = new IncomingForm();
-    // Разрешаем принимать текстовые поля до 20 МБ, чтобы Formidable не ругался на наш Base64
-    form.maxFieldsSize = 20 * 1024 * 1024;
-    
     return new Promise((resolve) => {
         form.parse(req, async (err, fields, files) => {
             if (err) { 
@@ -57,32 +54,16 @@ Russian Typography & Adaptive Legend Table:
 
                 console.log("Отправка запроса чертежа в Pollinations (gpt-image-2)...");
 
-                // --- ОБРАБОТКА КАРТИНКИ НА БЭКЕНДЕ С КОНТРОЛЕМ ---
                 let imageBuffer;
-                const imageBase64 = getVal(fields.image_base64);
-
-                if (imageBase64 && imageBase64.startsWith('data:image')) {
-                    console.log("Принят Base64 текст с фронтенда. Превращаем в буфер...");
-                    const base64Data = imageBase64.split(',')[1];
-                    imageBuffer = Buffer.from(base64Data, 'base64');
-                } else if (imageUrl) {
-                    console.log(`Принята прямая ссылка на картинку: ${imageUrl}. Скачиваем...`);
+                if (imageUrl) {
                     const imgRes = await fetch(imageUrl);
                     const arrayBuffer = await imgRes.arrayBuffer();
                     imageBuffer = Buffer.from(arrayBuffer);
                 } else {
-                    console.log("Принят бинарный файл через FormData...");
                     const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                    if (!file) throw new Error("Фото не получено. Все каналы передачи пусты!");
+                    if (!file) throw new Error("Фото не получено");
                     imageBuffer = fs.readFileSync(file.filepath);
                 }
-
-                // ЖЕСТКАЯ ПРОВЕРКА: Проверяем размер буфера
-                if (!imageBuffer || imageBuffer.length === 0) {
-                    throw new Error("Критическая ошибка: Буфер изображения пуст! ИИ не получит картинку.");
-                }
-
-                console.log(`Успешно подготовили файл для Pollinations. Размер: ${(imageBuffer.length / 1024).toFixed(2)} Кб`);
 
                 const pollFormData = new globalThis.FormData();
                 pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
