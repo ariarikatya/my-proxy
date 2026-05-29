@@ -119,7 +119,7 @@ export default async function handler(req, res) {
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
 
-                const currentStrength = modules ? '0.60' : '0.50';
+                const currentStrength = modules ? '0.55' : '0.40';
                 pollFormData.append('strength', currentStrength);
 
                 const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
