@@ -30,29 +30,26 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules); 
                 const imageUrl = getVal(fields.image_url);
 
-                // Жесткий промт для чертежей, зашитый на бэкенде
                 const finalPrompt = `STRICT IMAGE-TO-IMAGE RECONSTRUCTION AND GEOMETRIC TRACING.
 Flat 2D top-down orthographic blueprint look. Pure landscape engineering schematic.
 
 CRITICAL OBJECT MAPPING (ZERO IMMAGINATION ALLOWED):
-1. Detect and preserve the EXACT outer perimeter shape, boundaries, and angles of the plot directly from the attached image. If the borders in the photo are straight, draw them straight; if they are skewed or irregular, trace them exactly as they appear.
-2. Identify all actual prominent visual landmarks and structures present in the image (such as existing buildings, pathways, clearings, or distinct vegetation zones).
-3. Translate their precise scale, coordinates, and spatial distribution 1:1 onto the flat 2D layout. If a landmark is located on a specific side or corner of the photo, its corresponding CAD symbol must be locked to that exact position on the drawing.
-4. STRICT FORBIDDEN ZONE: Do not invent, do not add, and do not suggest any elements, plants, houses, or structures that are NOT visible in the source photo. If an area on the photo is empty, it must remain blank lawn/paving on the blueprint.
+1. Detect and preserve the EXACT outer perimeter shape, boundaries, and angles of the plot directly from the attached image.
+2. Identify all actual prominent visual landmarks and structures present in the image.
+3. Translate their precise scale, coordinates, and spatial distribution 1:1 onto the flat 2D layout.
+4. STRICT FORBIDDEN ZONE: Do not invent, do not add, and do not suggest any elements that are NOT visible in the source photo.
 
 Graphic Style & Symbology:
 - Minimalist engineering schematic style on a stark, solid white background. 
 - Crisp, ultra-fine black lines only. No 3D depth, no volumetric shading, no photo textures, no colors.
-- Standalone major features or trees are represented as single precise geometric circles with a central dot or crosshair.
-- Mass plantings or dense landscape zones are outlined with clean, textured cloud-like technical symbols.
+- Standalone major features are represented as single precise geometric circles with a crosshair.
 
 Russian Typography & Adaptive Legend Table:
 - Main Title at the top center exactly: "ПОСАДОЧНЫЙ ЧЕРТЁЖ УЧАСТКА"
 - On the right side, draw a clean structured table titled: "Условные обозначения"
-- Inside the table, dynamically generate a numbered list (1, 2, 3...) ONLY for the detected elements that match the user's active filter selection: ${modules || 'растения'}. Translate them into clear Russian technical terms.
-- Draw thin leader lines with small numbered callout circles (1, 2, 3...) connecting the table rows directly to their exact traced locations inside the blueprint layout.`;
+- Inside the table, dynamically generate a numbered list ONLY for: ${modules || 'растения'}.`;
 
-                console.log("Отправка запроса чертежа в Pollinations (gpt-image-2)...");
+                console.log("Отправка быстрого запроса чертежа в Pollinations...");
 
                 let imageBuffer;
                 if (imageUrl) {
@@ -68,8 +65,10 @@ Russian Typography & Adaptive Legend Table:
                 const pollFormData = new globalThis.FormData();
                 pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
                 pollFormData.append('prompt', finalPrompt);
-                pollFormData.append('model', 'gpt-image-2'); // Фиксируем модель для чертежей
-                pollFormData.append('response_format', 'b64_json'); 
+                pollFormData.append('model', 'gpt-image-2'); 
+                
+                // === КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: УБРАЛИ b64_json ===
+                // Pollinations вернет ответ моментально, не дожидаясь рендеринга
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
@@ -80,14 +79,18 @@ Russian Typography & Adaptive Legend Table:
                 const pollData = await pollRes.json();
                 if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
 
-                const result = pollData.data?.[0];
+                // Получаем прямую URL-ссылку на генерацию
+                const resultUrl = pollData.data?.[0]?.url;
 
+                if (!resultUrl) throw new Error("Ссылка от API не получена");
+
+                // Сразу же отдаем её фронтенду! Функция завершается за 2 секунды.
                 res.status(200).json({ 
                     success: true, 
                     done: true, 
                     provider: 'pollinations', 
-                    image: result?.b64_json || result?.url, 
-                    isUrl: !!result?.url 
+                    image: resultUrl, 
+                    isUrl: true 
                 });
                 return resolve();
 
