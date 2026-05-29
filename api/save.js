@@ -112,19 +112,72 @@ const finalPrompt = promptParts.join(', ');
 
                 const result = pollData.data?.[0];
 
-                res.status(200).json({ 
-                    success: true, 
-                    done: true, 
-                    provider: 'pollinations', 
-                    image: result?.b64_json || result?.url, 
-                    isUrl: !!result?.url 
-                });
-                return resolve();
+                // === ФОНОВАЯ ПРОВЕРКА БАЛАНСА И УВЕДОМЛЕНИЯ ===
+                try {
+                    const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` }
+                    });
 
-            } catch (e) {
-                res.status(500).json({ success: false, error: e.message });
-                return resolve();
-            }
-        });
-    });
+                    if (balanceRes.ok) {
+                        const balanceData = await balanceRes.json();
+                        const currentBalance = balanceData.balance;
+                        console.log("Текущий баланс:", currentBalance);
+
+                        // Уведомляем, если баланс упал ниже $10.0
+                        if (currentBalance < 10.0) {
+                            const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет, чтобы генерация у клиентов не остановилась.`;
+
+                            // 1. ОТПРАВКА НА ПОЧТУ (через твой Formspark)
+                            fetch('https://submit-form.com/7MSGuX47l', {
+                                method: 'POST',
+                                headers: { 
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    email: 'ariarikaty@gmail.com',
+                                    message: alertText
+                                })
+                            }).catch(e => console.error("Ошибка отправки почты через Formspark:", e));
+
+                            // 2. ОТПРАВКА В МЕССЕНДЖЕР МАКС (max.ru)
+                            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN; // Токен бота МАКС
+                            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;     // Твой Chat ID в МАКС
+
+                            if (MAX_BOT_TOKEN && MAX_CHAT_ID) {
+                                fetch(`https://api.max.ru/bot/v1/messages.send`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${MAX_BOT_TOKEN}`
+                                    },
+                                    body: JSON.stringify({
+                                        chat_id: MAX_CHAT_ID,
+                                        text: alertText
+                                    })
+                                }).catch(e => console.error("Ошибка отправки сообщения в МАКС:", e));
+                            }
+                        }
+                    }
+                } catch (balanceError) {
+                    console.error("Ошибка при фоновой проверке баланса:", balanceError);
+                }
+                // === КОНЕЦ БЛОКА ПРОВЕРКИ ===
+
+                res.status(200).json({ 
+                    success: true, 
+                    done: true, 
+                    provider: 'pollinations', 
+                    image: result?.b64_json || result?.url, 
+                    isUrl: !!result?.url 
+                });
+                return resolve();
+
+            } catch (e) {
+                res.status(500).json({ success: false, error: e.message });
+                return resolve();
+            }
+        });
+    });
 }
