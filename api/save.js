@@ -138,58 +138,71 @@ export default async function handler(req, res) {
 
                 // Фоновая проверка баланса
                 try {
-    const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` }
-    });
+                    const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
+                        method: 'GET',
+                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` }
+                    });
 
-    if (balanceRes.ok) {
-        const balanceData = await balanceRes.json();
-        const currentBalance = balanceData.balance;
+                    if (balanceRes.ok) {
+                        const balanceData = await balanceRes.json();
+                        const currentBalance = balanceData.balance;
 
-        // Условие выполняется 
-        if (currentBalance < 10.001) {
-            const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет.`;
+                        if (currentBalance < 10.001) {
+                            const now = Date.now();
+                            // 🔥 Суточный кулдаун: 24 часа в миллисекундах
+                            const cooldown = 24 * 60 * 60 * 1000; 
 
-            console.log("📬 Отправка алерта в Formspark...");
-            // ДОБАВИЛИ await — теперь сервер не умрет, пока Formspark не ответит
-            await fetch('https://submit-form.com/7MSGuX47l', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    email: 'ariarikaty@gmail.com',
-                    message: alertText
-                })
-            }).then(r => console.log(`Formspark ответ: ${r.status}`))
-              .catch(e => console.error("Ошибка Formspark:", e));
+                            if (now - lastAlertTime > cooldown) {
+                                lastAlertTime = now; // Фиксируем время отправки
 
-            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN;
-            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;
+                                // Ссылка добавлена в текст сообщения
+                                const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}.\n\nПожалуйста, пополните счет: https://enter.pollinations.ai`;
 
-            if (MAX_BOT_TOKEN && MAX_CHAT_ID) {
-                console.log("📲 Отправка алерта в МАКС...");
-                // ДОБАВИЛИ await для робота
-                await fetch(`https://api.max.ru/bot/v1/messages.send`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${MAX_BOT_TOKEN}`
-                    },
-                    body: JSON.stringify({
-                        chat_id: MAX_CHAT_ID,
-                        text: alertText
-                    })
-                }).then(r => console.log(`МАКС ответ: ${r.status}`))
-                  .catch(e => console.error("Ошибка МАКС:", e));
-            }
-        }
-    }
-} catch (balanceError) {
-    console.error("Ошибка в блоке уведомлений:", balanceError);
-}
+                                console.log("📬 Лимит пройден. Отправка алерта в Formspark...");
+                                await fetch('https://submit-form.com/7MSGuX47l', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                                    body: JSON.stringify({ email: 'ariarikaty@gmail.com', message: alertText })
+                                }).then(r => console.log(`Formspark ответ: ${r.status}`))
+                                  .catch(e => console.error("Ошибка Formspark:", e));
+
+                                // --- ИНТЕГРАЦИЯ С ВК ---
+                                const VK_BOT_TOKEN = process.env.VK_BOT_TOKEN;
+                                const VK_USER_ID = process.env.VK_USER_ID;
+
+                                if (VK_BOT_TOKEN && VK_USER_ID) {
+                                    console.log("📲 Отправка алерта во ВКонтакте...");
+                                    
+                                    const vkParams = new URLSearchParams({
+                                        user_id: VK_USER_ID,
+                                        message: alertText,
+                                        access_token: VK_BOT_TOKEN,
+                                        v: '5.131',
+                                        random_id: Math.floor(Math.random() * 2147483647).toString()
+                                    });
+
+                                    await fetch(`https://api.vk.com/method/messages.send`, {
+                                        method: 'POST',
+                                        body: vkParams
+                                    }).then(async (r) => {
+                                        const vkData = await r.json();
+                                        if (vkData.error) {
+                                            console.error("❌ Ошибка API ВК:", vkData.error.error_msg);
+                                        } else {
+                                            console.log("✅ Уведомление в ВК успешно отправлено!");
+                                        }
+                                    }).catch(e => console.error("Ошибка сети при запросе к ВК:", e));
+                                } else {
+                                    console.log("⚠️ Переменные VK_BOT_TOKEN или VK_USER_ID не настроены.");
+                                }
+                            } else {
+                                console.log("⏳ Уведомление заблокировано: суточный кулдаун еще не истек.");
+                            }
+                        }
+                    }
+                } catch (balanceError) {
+                    console.error("Ошибка в блоке уведомлений:", balanceError);
+                }
 
                 res.status(200).json({ 
                     success: true, 
