@@ -28,6 +28,20 @@ export default async function handler(req, res) {
         'колониальный стиль': 'colonial garden style, traditional estate look',
         'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
     };
+    const moduleTranslations = {
+    'идеальный газон': 'perfect fresh green lawn grass',
+    'плодовые деревья': 'fruiting orchard trees with apples and pears',
+    'огород': 'organized vegetable garden beds, neat raised patches',
+    'миксбордер': 'lush layered perennial mixborder flowerbed along the edge',
+    'камни': 'decorative landscape boulders, natural stones, rock accents',
+    'прудик': 'small peaceful garden pond with water lilies and clear water',
+    'злаки': 'ornamental tall fluffy grasses, tufted meadow-grass',
+    'розы': 'gorgeous blooming rose bushes, vibrant roses in full bloom',
+    'карликовые растения': 'charming dwarf shrubs and miniature miniature plants',
+    'на штамбе': 'elegant topiary trees on a single high stem, standard trees',
+    'хвойные': 'evergreen coniferous plants, small pine and thuja bushes',
+    'живые изгороди': 'neatly sheared dense green hedge row'
+};
 
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -43,38 +57,51 @@ export default async function handler(req, res) {
             }
 
             try {
-                const getVal = (val) => Array.isArray(val) ? val[0] : val;
-                const style = getVal(fields.style);
-                const custom = getVal(fields.customRequest);
-                const modules = getVal(fields.modules); 
-                const imageUrl = getVal(fields.image_url);
+    const getVal = (val) => Array.isArray(val) ? val[0] : val;
+    const style = getVal(fields.style);
+    const custom = getVal(fields.customRequest);
+    const modules = getVal(fields.modules); // Тут прилетает строка типа "Идеальный газон, Розы"
+    const imageUrl = getVal(fields.image_url);
 
-                let promptParts = [
-                    "Professional landscape design architecture modification",
-                    "highly detailed garden overhaul integration"
-                ];
+    let corePrompt = [];
 
-                if (modules) {
-                    promptParts.push(`CHIEF TASK: seamlessly build, dig and integrate ${modules} directly into the ground on the foreground and middle ground`);
-                } else {
-                    promptParts.push("completely replacing the dirty soil with a beautiful fresh neat green lawn grass");
-                }
+    // 2. РАЗБИРАЕМ И ПЕРЕВОДИМ МНОЖЕСТВЕННЫЕ ФИЛЬТРЫ:
+    if (modules && modules.trim().length > 0) {
+        // Режем строку по запятым на отдельные элементы
+        const chosenModules = modules.split(',')
+            .map(item => item.trim().toLowerCase()) // переводим в нижний регистр и убираем пробелы
+            .filter(item => item.length > 0);
 
-                if (style) {
-                    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
-                    promptParts.push(`the entire garden must be heavily stylized in ${translatedStyle}`);
-                }
+        // Переводим каждый элемент через наш словарь
+        const translatedModules = chosenModules.map(mod => {
+            return moduleTranslations[mod] || mod; // Если слова нет в словаре, оставит как есть
+        });
 
-                if (custom) {
-                    promptParts.push(`${custom}`);
-                }
+        // Запихиваем переведенные модули в главный фокус промта
+        corePrompt.push(`CRITICAL TASK: Beautifully plant, build, and integrate these elements directly into the foreground and middle ground: ${translatedModules.join(', ')}`);
+    } else {
+        // Если ничего не выбрано — просто фигачим траву
+        corePrompt.push("CRITICAL TASK: cover the entire ground with a beautiful fresh neat green lawn grass");
+    }
 
-                promptParts.push("KEEP and preserve the main wooden fence, background trees, houses, and cars from the original photo completely intact and unchanged");
-                promptParts.push("do not alter or modify the shape of the existing fence or pre-existing buildings");
-                promptParts.push("photorealistic masterwork, 8k resolution, crisp professional landscape photography, beautiful daylight lighting");
+    // 3. Добавляем стиль
+    if (style) {
+        const translatedStyle = styleTranslations[style.toLowerCase().trim()] || style;
+        corePrompt.push(`overall garden design style: ${translatedStyle}`);
+    }
 
-                const finalPrompt = promptParts.join(', ');
-                console.log("Новый прокачанный промт:", finalPrompt);
+    if (custom) {
+        corePrompt.push(`user custom instruction: ${custom}`);
+    }
+
+    // Технические хвосты
+    corePrompt.push("professional landscape architecture design photography");
+    corePrompt.push("PRESERVE COMPLETELY UNCHANGED: the original wooden fence, background houses, cars, background trees, and overall layout must remain 100% identical and untouched");
+    corePrompt.push("do not alter existing buildings or change the fence structure");
+    corePrompt.push("photorealistic, hyperrealistic masterwork, 8k resolution, crisp daytime lighting");
+
+    const finalPrompt = corePrompt.join(', ');
+    console.log("🔥 НАСТОЯЩИЙ ПРОКАЧАННЫЙ ПРОМТ ДЛЯ СЕТИ:", finalPrompt);
 
                 let imageBuffer;
                 if (imageUrl) {
@@ -92,7 +119,7 @@ export default async function handler(req, res) {
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
 
-                const currentStrength = modules ? '0.50' : '0.40';
+                const currentStrength = modules ? '0.60' : '0.50';
                 pollFormData.append('strength', currentStrength);
 
                 const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
