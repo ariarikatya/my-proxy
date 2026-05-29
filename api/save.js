@@ -1,7 +1,6 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
-import FormData from 'form-data'; // Используем стабильный npm-пакет form-data
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -88,8 +87,7 @@ export default async function handler(req, res) {
                     imageBuffer = fs.readFileSync(file.filepath);
                 }
 
-                // Переделываем сборку FormData под Node.js
-                const pollFormData = new FormData();
+                const pollFormData = new globalThis.FormData();
                 pollFormData.append('prompt', finalPrompt);
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
@@ -97,18 +95,12 @@ export default async function handler(req, res) {
                 const currentStrength = modules ? '0.50' : '0.40';
                 pollFormData.append('strength', currentStrength);
 
-                // Передаем буфер с явным указанием имени файла и его mime-типа
-                pollFormData.append('image', imageBuffer, {
-                    filename: 'image.jpg',
-                    contentType: 'image/jpeg'
-                });
+                const imageBlob = new Blob([imageBuffer], { type: 'image/jpeg' });
+                pollFormData.append('image', imageBlob, 'image.jpg');
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
-                    headers: { 
-                        'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
-                        ...pollFormData.getHeaders() // Прокидываем корректные Content-Type границы формы
-                    },
+                    headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
                     body: pollFormData
                 });
 
@@ -117,7 +109,7 @@ export default async function handler(req, res) {
 
                 const result = pollData.data?.[0];
 
-                // Фоновая проверка баланса (оставляем без изменений)
+                // Фоновая проверка баланса
                 try {
                     const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
                         method: 'GET',
@@ -127,7 +119,6 @@ export default async function handler(req, res) {
                     if (balanceRes.ok) {
                         const balanceData = await balanceRes.json();
                         const currentBalance = balanceData.balance;
-                        console.log("Текущий баланс:", currentBalance);
 
                         if (currentBalance < 10.0) {
                             const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет, чтобы генерация у клиентов не остановилась.`;
