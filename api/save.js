@@ -13,21 +13,21 @@ const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
   const styleTranslations = {
-    'эконом стиль': 'simple functional garden, budget-friendly materials',
-    'английский пейзажный стиль': 'English landscape style, natural aesthetic',
-    'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere',
-    'хай-тек': 'high-tech style, modern materials, sharp geometric lines',
-    'кантри деревенский стиль': 'rustic country style, cozy rural atmosphere',
-    'классический регулярный стиль': 'classic formal style, symmetrical layout',
-    'прованс': 'French Provence style, southern European garden mood',
-    'скандинавский стиль': 'Scandinavian style, Nordic minimalism, natural textures',
-    'средиземноморский стиль': 'Mediterranean style, warm coastal atmosphere',
-    'минимализм': 'minimalist style, clean simple lines, spacious',
-    'природный экостиль': 'natural eco-style, sustainable look',
-    'модерн': 'modernist landscape, elegant flowing shapes',
-    'колониальный стиль': 'colonial garden style, traditional estate look',
-    'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
-};
+                    'эконом стиль': 'simple functional garden, budget-friendly materials',
+                    'английский пейзажный стиль': 'classic English landscape style, natural cottage aesthetic, lush perennial borders',
+                    'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere, rocks and gravel',
+                    'хай-тек': 'high-tech style, modern materials, sharp geometric lines, minimalist lighting',
+                    'кантри деревенский стиль': 'rustic country style, cozy rural atmosphere, wildflowers',
+                    'классический регулярный стиль': 'classic formal style, symmetrical layout, neat hedges',
+                    'прованс': 'French Provence style, lavender fields, gravel paths, light stone accents, southern European atmosphere',
+                    'скандинавский стиль': 'Scandinavian style, Nordic minimalism, natural textures',
+                    'средиземноморский стиль': 'Mediterranean style, warm coastal atmosphere, terracotta pots',
+                    'минимализм': 'minimalist style, clean simple lines, spacious',
+                    'природный экостиль': 'natural eco-style, sustainable look',
+                    'модерн': 'modernist landscape, elegant flowing shapes',
+                    'колониальный стиль': 'colonial garden style, traditional estate look',
+                    'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
+                };
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -50,39 +50,40 @@ export default async function handler(req, res) {
 
                 // --- АБСОЛЮТНО УНИВЕРСАЛЬНЫЙ ПРОМТ ДЛЯ ЛЮБЫХ УЧАСТКОВ ---
 let promptParts = [
-    "Professional landscape design modification integration",
-    "the new landscape elements must be placed strictly on the empty ground soil surfaces and lawn zones"
-];
+                    "Professional landscape design architecture modification",
+                    "highly detailed garden overhaul integration"
+                ];
 
 // Добавляем выбранные модули (розы, пруды, теплицы)
 if (modules) {
-    promptParts.push(`beautifully adding and integrating ${modules} into the landscape layout`);
-} else {
-    promptParts.push("adding fresh neat green lawn grass");
-}
+                    promptParts.push(`CHIEF TASK: seamlessly build, dig and integrate ${modules} directly into the ground on the foreground and middle ground`);
+                } else {
+                    // Газон добавляем ТОЛЬКО если модулей нет, чтобы он не забивал всё место
+                    promptParts.push("completely replacing the dirty soil with a beautiful fresh neat green lawn grass");
+                }
 
-// Добавляем выбранный стиль ландшафта
-if (style) {
-    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
-    promptParts.push(`stylized in ${translatedStyle}`);
-}
+                // СТИЛЬ
+                if (style) {
+                    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
+                    promptParts.push(`the entire garden must be heavily stylized in ${translatedStyle}`);
+                }
 
-if (custom) {
-    promptParts.push(`${custom}`);
-}
+                if (custom) {
+                    promptParts.push(`${custom}`);
+                }
 
-// КРИТИЧЕСКИЙ БЛОК: Запрещаем ИИ перестраивать то, что уже есть на фото (дома, бани, заборы, бассейны)
-promptParts.push("KEEP and preserve all existing buildings, houses, structures, fences, and background elements from the original photo completely intact and unchanged");
-promptParts.push("do not alter or change any pre-existing architectural objects on the source image");
+                // ЖЕСТКИЕ ПРАВИЛА СОХРАНЕНИЯ ОКРУЖЕНИЯ
+                promptParts.push("KEEP and preserve the main wooden fence, background trees, houses, and cars from the original photo completely intact and unchanged");
+                promptParts.push("do not alter or modify the shape of the existing fence or pre-existing buildings");
+                
+                // Качественные модификаторы
+                promptParts.push("photorealistic masterwork, 8k resolution, crisp professional landscape photography, beautiful daylight lighting");
 
-// Качественные модификаторы (без ключевых слов "architectural", чтобы ИИ не вздумал перестраивать архитектуру)
-promptParts.push("photorealistic garden, 8k resolution, highly detailed plants and flowers, realistic natural daylight, crisp professional photography");
+                const finalPrompt = promptParts.join(', ');
+                console.log("Новый прокачанный промт:", finalPrompt);
 
-const finalPrompt = promptParts.join(', ');
-
-                console.log("Финальный промт, отправляемый в API:", finalPrompt);
-
-                let imageBuffer;
+                let imageBuffer;
+=
                 if (imageUrl) {
                     const imgRes = await fetch(imageUrl);
                     const arrayBuffer = await imgRes.arrayBuffer();
@@ -94,13 +95,17 @@ const finalPrompt = promptParts.join(', ');
                 }
 
                 const pollFormData = new globalThis.FormData();
-                pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
-                pollFormData.append('prompt', finalPrompt);
-                pollFormData.append('model', 'klein');
-                pollFormData.append('response_format', 'b64_json'); 
-              
-                pollFormData.append('strength', '0.40');
+                pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
+                pollFormData.append('prompt', finalPrompt);
+                pollFormData.append('model', 'klein');
+                pollFormData.append('response_format', 'b64_json'); 
 
+                // ДИНАМИЧЕСКИЙ STRENGTH:
+                // Если выбран ПРУД, ИИ нужно больше свободы (выкопать яму, изменить текстуру земли).
+                // Поэтому если есть модули, ставим 0.50. Если просто газон — оставляем аккуратные 0.40.
+                const currentStrength = modules ? '0.50' : '0.40';
+                pollFormData.append('strength', currentStrength);
+              
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
