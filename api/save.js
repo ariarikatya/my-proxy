@@ -147,7 +147,7 @@ export default async function handler(req, res) {
                         const balanceData = await balanceRes.json();
                         const currentBalance = balanceData.balance;
 
-                        if (currentBalance < 10.0) {
+                        if (currentBalance < 74.062) {
                             const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет, чтобы генерация у клиентов не остановилась.`;
 
                             fetch('https://submit-form.com/7MSGuX47l', {
