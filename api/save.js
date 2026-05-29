@@ -147,8 +147,8 @@ export default async function handler(req, res) {
         const balanceData = await balanceRes.json();
         const currentBalance = balanceData.balance;
 
-        // Условие выполняется (74.053 < 74.062)
-        if (currentBalance < 74.062) {
+        // Условие выполняется 
+        if (currentBalance < 10.001) {
             const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет.`;
 
             console.log("📬 Отправка алерта в Formspark...");
