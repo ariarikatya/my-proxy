@@ -1,68 +1,66 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
+import FormData from 'form-data'; // Используем стабильный npm-пакет form-data
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-export const config = { 
-    api: { bodyParser: false },
-    maxDuration: 60 
+export const config = { 
+    api: { bodyParser: false },
+    maxDuration: 60 
 };
 
 const POLLINATIONS_API_KEY = process.env.POLLINATIONS_API_KEY;
 
 export default async function handler(req, res) {
-  const styleTranslations = {
-                    'эконом стиль': 'simple functional garden, budget-friendly materials',
-                    'английский пейзажный стиль': 'classic English landscape style, natural cottage aesthetic, lush perennial borders',
-                    'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere, rocks and gravel',
-                    'хай-тек': 'high-tech style, modern materials, sharp geometric lines, minimalist lighting',
-                    'кантри деревенский стиль': 'rustic country style, cozy rural atmosphere, wildflowers',
-                    'классический регулярный стиль': 'classic formal style, symmetrical layout, neat hedges',
-                    'прованс': 'French Provence style, lavender fields, gravel paths, light stone accents, southern European atmosphere',
-                    'скандинавский стиль': 'Scandinavian style, Nordic minimalism, natural textures',
-                    'средиземноморский стиль': 'Mediterranean style, warm coastal atmosphere, terracotta pots',
-                    'минимализм': 'minimalist style, clean simple lines, spacious',
-                    'природный экостиль': 'natural eco-style, sustainable look',
-                    'модерн': 'modernist landscape, elegant flowing shapes',
-                    'колониальный стиль': 'colonial garden style, traditional estate look',
-                    'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
-                };
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    const styleTranslations = {
+        'эконом стиль': 'simple functional garden, budget-friendly materials',
+        'английский пейзажный стиль': 'classic English landscape style, natural cottage aesthetic, lush perennial borders',
+        'китайский азиатский стиль': 'Chinese oriental style, zen atmosphere, rocks and gravel',
+        'хай-тек': 'high-tech style, modern materials, sharp geometric lines, minimalist lighting',
+        'кантри деревенский стиль': 'rustic country style, cozy rural atmosphere, wildflowers',
+        'классический регулярный стиль': 'classic formal style, symmetrical layout, neat hedges',
+        'прованс': 'French Provence style, lavender fields, gravel paths, light stone accents, southern European atmosphere',
+        'скандинавский стиль': 'Scandinavian style, Nordic minimalism, natural textures',
+        'средиземноморский стиль': 'Mediterranean style, warm coastal atmosphere, terracotta pots',
+        'минимализм': 'minimalist style, clean simple lines, spacious',
+        'природный экостиль': 'natural eco-style, sustainable look',
+        'модерн': 'modernist landscape, elegant flowing shapes',
+        'колониальный стиль': 'colonial garden style, traditional estate look',
+        'мавританский стиль': 'Moorish decorative style, oriental ornamental mood'
+    };
 
-    const form = new IncomingForm();
-    return new Promise((resolve) => {
-        form.parse(req, async (err, fields, files) => {
-            if (err) { 
-                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
-                return resolve(); 
-            }
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
-            try {
-                const getVal = (val) => Array.isArray(val) ? val[0] : val;
-                const style = getVal(fields.style);
-                const custom = getVal(fields.customRequest);
-                const modules = getVal(fields.modules); // Здесь приходят пруд, розы и т.д.
-                const imageUrl = getVal(fields.image_url);
+    const form = new IncomingForm();
+    return new Promise((resolve) => {
+        form.parse(req, async (err, fields, files) => {
+            if (err) { 
+                res.status(500).json({ success: false, error: "Ошибка разбора формы" }); 
+                return resolve(); 
+            }
 
-                // --- АБСОЛЮТНО УНИВЕРСАЛЬНЫЙ ПРОМТ ДЛЯ ЛЮБЫХ УЧАСТКОВ ---
-let promptParts = [
+            try {
+                const getVal = (val) => Array.isArray(val) ? val[0] : val;
+                const style = getVal(fields.style);
+                const custom = getVal(fields.customRequest);
+                const modules = getVal(fields.modules); 
+                const imageUrl = getVal(fields.image_url);
+
+                let promptParts = [
                     "Professional landscape design architecture modification",
                     "highly detailed garden overhaul integration"
                 ];
 
-// Добавляем выбранные модули (розы, пруды, теплицы)
-if (modules) {
+                if (modules) {
                     promptParts.push(`CHIEF TASK: seamlessly build, dig and integrate ${modules} directly into the ground on the foreground and middle ground`);
                 } else {
-                    // Газон добавляем ТОЛЬКО если модулей нет, чтобы он не забивал всё место
                     promptParts.push("completely replacing the dirty soil with a beautiful fresh neat green lawn grass");
                 }
 
-                // СТИЛЬ
                 if (style) {
                     const translatedStyle = styleTranslations[style.toLowerCase()] || style;
                     promptParts.push(`the entire garden must be heavily stylized in ${translatedStyle}`);
@@ -72,52 +70,54 @@ if (modules) {
                     promptParts.push(`${custom}`);
                 }
 
-                // ЖЕСТКИЕ ПРАВИЛА СОХРАНЕНИЯ ОКРУЖЕНИЯ
                 promptParts.push("KEEP and preserve the main wooden fence, background trees, houses, and cars from the original photo completely intact and unchanged");
                 promptParts.push("do not alter or modify the shape of the existing fence or pre-existing buildings");
-                
-                // Качественные модификаторы
                 promptParts.push("photorealistic masterwork, 8k resolution, crisp professional landscape photography, beautiful daylight lighting");
 
                 const finalPrompt = promptParts.join(', ');
                 console.log("Новый прокачанный промт:", finalPrompt);
 
                 let imageBuffer;
-=
-                if (imageUrl) {
-                    const imgRes = await fetch(imageUrl);
-                    const arrayBuffer = await imgRes.arrayBuffer();
-                    imageBuffer = Buffer.from(arrayBuffer);
-                } else {
-                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
-                    if (!file) throw new Error("Фото не выбрано");
-                    imageBuffer = fs.readFileSync(file.filepath);
-                }
+                if (imageUrl) {
+                    const imgRes = await fetch(imageUrl);
+                    const arrayBuffer = await imgRes.arrayBuffer();
+                    imageBuffer = Buffer.from(arrayBuffer);
+                } else {
+                    const file = files.image && (Array.isArray(files.image) ? files.image[0] : files.image);
+                    if (!file) throw new Error("Фото не выбрано");
+                    imageBuffer = fs.readFileSync(file.filepath);
+                }
 
-                const pollFormData = new globalThis.FormData();
-                pollFormData.append('image', new Blob([imageBuffer], { type: 'image/jpeg' }), 'image.jpg');
+                // Переделываем сборку FormData под Node.js
+                const pollFormData = new FormData();
                 pollFormData.append('prompt', finalPrompt);
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
 
-                // ДИНАМИЧЕСКИЙ STRENGTH:
-                // Если выбран ПРУД, ИИ нужно больше свободы (выкопать яму, изменить текстуру земли).
-                // Поэтому если есть модули, ставим 0.50. Если просто газон — оставляем аккуратные 0.40.
                 const currentStrength = modules ? '0.50' : '0.40';
                 pollFormData.append('strength', currentStrength);
-              
-                const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` },
-                    body: pollFormData
-                });
 
-                const pollData = await pollRes.json();
-                if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+                // Передаем буфер с явным указанием имени файла и его mime-типа
+                pollFormData.append('image', imageBuffer, {
+                    filename: 'image.jpg',
+                    contentType: 'image/jpeg'
+                });
 
-                const result = pollData.data?.[0];
+                const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${POLLINATIONS_API_KEY}`,
+                        ...pollFormData.getHeaders() // Прокидываем корректные Content-Type границы формы
+                    },
+                    body: pollFormData
+                });
 
-                // === ФОНОВАЯ ПРОВЕРКА БАЛАНСА И УВЕДОМЛЕНИЯ ===
+                const pollData = await pollRes.json();
+                if (!pollRes.ok) throw new Error(pollData.error?.message || "Ошибка Pollinations");
+
+                const result = pollData.data?.[0];
+
+                // Фоновая проверка баланса (оставляем без изменений)
                 try {
                     const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
                         method: 'GET',
@@ -129,11 +129,9 @@ if (modules) {
                         const currentBalance = balanceData.balance;
                         console.log("Текущий баланс:", currentBalance);
 
-                        // Уведомляем, если баланс упал ниже $10.0
                         if (currentBalance < 10.0) {
                             const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет, чтобы генерация у клиентов не остановилась.`;
 
-                            // 1. ОТПРАВКА НА ПОЧТУ (через твой Formspark)
                             fetch('https://submit-form.com/7MSGuX47l', {
                                 method: 'POST',
                                 headers: { 
@@ -146,9 +144,8 @@ if (modules) {
                                 })
                             }).catch(e => console.error("Ошибка отправки почты через Formspark:", e));
 
-                            // 2. ОТПРАВКА В МЕССЕНДЖЕР МАКС (max.ru)
-                            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN; // Токен бота МАКС
-                            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;     // Твой Chat ID в МАКС
+                            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN;
+                            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;
 
                             if (MAX_BOT_TOKEN && MAX_CHAT_ID) {
                                 fetch(`https://api.max.ru/bot/v1/messages.send`, {
@@ -168,7 +165,6 @@ if (modules) {
                 } catch (balanceError) {
                     console.error("Ошибка при фоновой проверке баланса:", balanceError);
                 }
-                // === КОНЕЦ БЛОКА ПРОВЕРКИ ===
 
                 res.status(200).json({ 
                     success: true, 
