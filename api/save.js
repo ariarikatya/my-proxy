@@ -48,24 +48,37 @@ export default async function handler(req, res) {
                 const modules = getVal(fields.modules); // Здесь приходят пруд, розы и т.д.
                 const imageUrl = getVal(fields.image_url);
 
-                // СОСТАВЛЯЕМ ПРАВИЛЬНЫЙ ПРОМТ
-                let promptParts = ["Landscape design"];
-                
-                if (style) {
-                    // ПРОВЕРКА: Если есть перевод в словаре — берем его, если нет — оставляем оригинал
-                    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
-                    promptParts.push(`${translatedStyle} style`);
-                }
-                
-                // Добавляем выбранные модули (розы, пруды), если они есть
-                if (modules) promptParts.push(`featuring ${modules}`);
-                
-                if (custom) promptParts.push(`${custom}`);
+                // --- АБСОЛЮТНО УНИВЕРСАЛЬНЫЙ ПРОМТ ДЛЯ ЛЮБЫХ УЧАСТКОВ ---
+let promptParts = [
+    "Professional landscape design modification integration",
+    "the new landscape elements must be placed strictly on the empty ground soil surfaces and lawn zones"
+];
 
-                // Усиливаем промт профессиональными ключевыми словами
-                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping, photorealistic garden plants, cinematic lighting, architectural photography");
+// Добавляем выбранные модули (розы, пруды, теплицы)
+if (modules) {
+    promptParts.push(`beautifully adding and integrating ${modules} into the landscape layout`);
+} else {
+    promptParts.push("adding fresh neat green lawn grass");
+}
 
-                const finalPrompt = promptParts.join(', ');
+// Добавляем выбранный стиль ландшафта
+if (style) {
+    const translatedStyle = styleTranslations[style.toLowerCase()] || style;
+    promptParts.push(`stylized in ${translatedStyle}`);
+}
+
+if (custom) {
+    promptParts.push(`${custom}`);
+}
+
+// КРИТИЧЕСКИЙ БЛОК: Запрещаем ИИ перестраивать то, что уже есть на фото (дома, бани, заборы, бассейны)
+promptParts.push("KEEP and preserve all existing buildings, houses, structures, fences, and background elements from the original photo completely intact and unchanged");
+promptParts.push("do not alter or change any pre-existing architectural objects on the source image");
+
+// Качественные модификаторы (без ключевых слов "architectural", чтобы ИИ не вздумал перестраивать архитектуру)
+promptParts.push("photorealistic garden, 8k resolution, highly detailed plants and flowers, realistic natural daylight, crisp professional photography");
+
+const finalPrompt = promptParts.join(', ');
 
                 console.log("Финальный промт, отправляемый в API:", finalPrompt);
 
@@ -86,7 +99,7 @@ export default async function handler(req, res) {
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
               
-                pollFormData.append('strength', '0.45');
+                pollFormData.append('strength', '0.35');
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
