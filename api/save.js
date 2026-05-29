@@ -99,7 +99,7 @@ const finalPrompt = promptParts.join(', ');
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
               
-                pollFormData.append('strength', '0.35');
+                pollFormData.append('strength', '0.40');
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
