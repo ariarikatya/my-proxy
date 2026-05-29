@@ -130,87 +130,12 @@ export default async function handler(req, res) {
 
 
 
-                const finalPrompt = `STRICT IMAGE-TO-IMAGE RECONSTRUCTION AND GEOMETRIC TRACING.
-
-
-
-Flat 2D top-down orthographic blueprint look. Pure landscape engineering schematic.
-
-
-
-
-
-
-
-CRITICAL OBJECT MAPPING (ZERO IMMAGINATION ALLOWED):
-
-
-
-1. Detect and preserve the EXACT outer perimeter shape, boundaries, and angles of the plot directly from the attached image. If the borders in the photo are straight, draw them straight; if they are skewed or irregular, trace them exactly as they appear.
-
-
-
-2. Identify all actual prominent visual landmarks and structures present in the image (such as existing buildings, pathways, clearings, or distinct vegetation zones).
-
-
-
-3. Translate their precise scale, coordinates, and spatial distribution 1:1 onto the flat 2D layout. If a landmark is located on a specific side or corner of the photo, its corresponding CAD symbol must be locked to that exact position on the drawing.
-
-
-
-4. STRICT FORBIDDEN ZONE: Do not invent, do not add, and do not suggest any elements, plants, houses, or structures that are NOT visible in the source photo. If an area on the photo is empty, it must remain blank lawn/paving on the blueprint.
-
-
-
-
-
-
-
-Graphic Style & Symbology:
-
-
-
-- Minimalist engineering schematic style on a stark, solid white background. 
-
-
-
-- Crisp, ultra-fine black lines only. No 3D depth, no volumetric shading, no photo textures, no colors.
-
-
-
-- Standalone major features or trees are represented as single precise geometric circles with a central dot or crosshair.
-
-
-
-- Mass plantings or dense landscape zones are outlined with clean, textured cloud-like technical symbols.
-
-
-
-
-
-
-
-Russian Typography & Adaptive Legend Table:
-
-
-
-- Main Title at the top center exactly: "ПОСАДОЧНЫЙ ЧЕРТЁЖ УЧАСТКА"
-
-
-
-- On the right side, draw a clean structured table titled: "Условные обозначения"
-
-
-
-- Inside the table, dynamically generate a numbered list (1, 2, 3...) ONLY for the detected elements that match the user's active filter selection: ${modules || 'растения'}. Translate them into clear Russian technical terms.
-
-
-
-- Draw thin leader lines with small numbered callout circles (1, 2, 3...) connecting the table rows directly to their exact traced locations inside the blueprint layout.`;
-
-
-
-
+                const finalPrompt = `STRICT 2D IMAGE-TO-IMAGE RECONSTRUCTION. 
+Flat 2D top-down orthographic blueprint, landscape engineering schematic style.
+1. Trace the EXACT outer perimeter, boundaries, and structure positions 1:1 from the attached photo.
+2. STRICT FORBIDDEN ZONE: Do not invent or add any new structures, houses, or elements. If an area is empty in the photo, keep it empty.
+3. Style: Stark solid white background, crisp ultra-fine black lines only. No colors, no 3D depth, no shading. Trees as precise circles with central dots, mass plantings as cloud-like technical symbols.
+4. Typography & Legend: Top center title "ПОСАДОЧНЫЙ ЧЕРТЁЖ УЧАСТКА". On the right, a structured table titled "Условные обозначения" with a numbered list matching active filters: ${modules || 'растения'}. Draw thin leader lines with callout circles connecting table rows to drawing elements.`;
 
 
 
