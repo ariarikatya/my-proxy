@@ -138,51 +138,58 @@ export default async function handler(req, res) {
 
                 // Фоновая проверка баланса
                 try {
-                    const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
-                        method: 'GET',
-                        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` }
-                    });
+    const balanceRes = await fetch('https://gen.pollinations.ai/account/balance', {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${POLLINATIONS_API_KEY}` }
+    });
 
-                    if (balanceRes.ok) {
-                        const balanceData = await balanceRes.json();
-                        const currentBalance = balanceData.balance;
+    if (balanceRes.ok) {
+        const balanceData = await balanceRes.json();
+        const currentBalance = balanceData.balance;
 
-                        if (currentBalance < 74.062) {
-                            const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет, чтобы генерация у клиентов не остановилась.`;
+        // Условие выполняется (74.053 < 74.062)
+        if (currentBalance < 74.062) {
+            const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}. Пожалуйста, пополните счет.`;
 
-                            fetch('https://submit-form.com/7MSGuX47l', {
-                                method: 'POST',
-                                headers: { 
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    email: 'ariarikaty@gmail.com',
-                                    message: alertText
-                                })
-                            }).catch(e => console.error("Ошибка отправки почты через Formspark:", e));
+            console.log("📬 Отправка алерта в Formspark...");
+            // ДОБАВИЛИ await — теперь сервер не умрет, пока Formspark не ответит
+            await fetch('https://submit-form.com/7MSGuX47l', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    email: 'ariarikaty@gmail.com',
+                    message: alertText
+                })
+            }).then(r => console.log(`Formspark ответ: ${r.status}`))
+              .catch(e => console.error("Ошибка Formspark:", e));
 
-                            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN;
-                            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;
+            const MAX_BOT_TOKEN = process.env.MAX_BOT_TOKEN;
+            const MAX_CHAT_ID = process.env.MAX_CHAT_ID;
 
-                            if (MAX_BOT_TOKEN && MAX_CHAT_ID) {
-                                fetch(`https://api.max.ru/bot/v1/messages.send`, {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${MAX_BOT_TOKEN}`
-                                    },
-                                    body: JSON.stringify({
-                                        chat_id: MAX_CHAT_ID,
-                                        text: alertText
-                                    })
-                                }).catch(e => console.error("Ошибка отправки сообщения в МАКС:", e));
-                            }
-                        }
-                    }
-                } catch (balanceError) {
-                    console.error("Ошибка при фоновой проверке баланса:", balanceError);
-                }
+            if (MAX_BOT_TOKEN && MAX_CHAT_ID) {
+                console.log("📲 Отправка алерта в МАКС...");
+                // ДОБАВИЛИ await для робота
+                await fetch(`https://api.max.ru/bot/v1/messages.send`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${MAX_BOT_TOKEN}`
+                    },
+                    body: JSON.stringify({
+                        chat_id: MAX_CHAT_ID,
+                        text: alertText
+                    })
+                }).then(r => console.log(`МАКС ответ: ${r.status}`))
+                  .catch(e => console.error("Ошибка МАКС:", e));
+            }
+        }
+    }
+} catch (balanceError) {
+    console.error("Ошибка в блоке уведомлений:", balanceError);
+}
 
                 res.status(200).json({ 
                     success: true, 
