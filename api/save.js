@@ -63,7 +63,7 @@ export default async function handler(req, res) {
                 if (custom) promptParts.push(`${custom}`);
 
                 // Усиливаем промт профессиональными ключевыми словами
-                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping, cinematic lighting, architectural photography");
+                promptParts.push("photorealistic, 8k, highly detailed, professional landscaping, photorealistic garden plants, cinematic lighting, architectural photography");
 
                 const finalPrompt = promptParts.join(', ');
 
@@ -85,6 +85,8 @@ export default async function handler(req, res) {
                 pollFormData.append('prompt', finalPrompt);
                 pollFormData.append('model', 'klein');
                 pollFormData.append('response_format', 'b64_json'); 
+              
+                pollFormData.append('strength', '0.45');
 
                 const pollRes = await fetch('https://gen.pollinations.ai/v1/images/edits', {
                     method: 'POST',
