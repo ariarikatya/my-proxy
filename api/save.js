@@ -147,7 +147,7 @@ export default async function handler(req, res) {
                         const balanceData = await balanceRes.json();
                         const currentBalance = balanceData.balance;
 
-                        if (currentBalance < 73.892) {
+                        if (currentBalance < 10.001) {
                             const now = Date.now();
                             const cooldown = 24 * 60 * 60 * 1000; 
 
