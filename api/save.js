@@ -149,13 +149,15 @@ export default async function handler(req, res) {
 
                         if (currentBalance < 73.892) {
                             const now = Date.now();
-                            // 🔥 Суточный кулдаун: 24 часа в миллисекундах
                             const cooldown = 24 * 60 * 60 * 1000; 
 
-                            if (now - lastAlertTime > cooldown) {
-                                lastAlertTime = now; // Фиксируем время отправки
+                            // 🔥 ФИКС: Безопасно достаем сохраненный таймер из глобального окружения
+                            let lastAlertTime = global.lastAlertTime || 0;
 
-                                // Ссылка добавлена в текст сообщения
+                            if (now - lastAlertTime > cooldown) {
+                                // 🔥 ФИКС: Записываем новое время в глобальный объект, чтобы оно не стерлось
+                                global.lastAlertTime = now; 
+
                                 const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}.\n\nПожалуйста, пополните счет: https://enter.pollinations.ai`;
 
                                 console.log("📬 Лимит пройден. Отправка алерта в Formspark...");
