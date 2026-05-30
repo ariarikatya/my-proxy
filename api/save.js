@@ -147,7 +147,7 @@ export default async function handler(req, res) {
                         const balanceData = await balanceRes.json();
                         const currentBalance = balanceData.balance;
 
-                        if (currentBalance < 10.001) {
+                        if (currentBalance < 73.892) {
                             const now = Date.now();
                             // 🔥 Суточный кулдаун: 24 часа в миллисекундах
                             const cooldown = 24 * 60 * 60 * 1000; 
