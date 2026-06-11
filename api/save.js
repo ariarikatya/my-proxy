@@ -175,7 +175,7 @@ export default async function handler(req, res) {
 
                                 await transporter.sendMail({
                                     from: `"Система Уведомлений" <${process.env.EMAIL_USER}>`, 
-                                    to: 'ariarikaty@gmail.com', // ⚠️ Твоя основная почта, куда придут письма
+                                    to: 'Ivanbahtin03@gmail.com', // ⚠️ Твоя основная почта, куда придут письма
                                     subject: '🚨 СРОЧНО: Баланс Pollinations API', 
                                     text: alertText, 
                                     html: `<b>${alertText.replace(/\n/g, '<br>')}</b>`, 
