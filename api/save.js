@@ -159,8 +159,7 @@ export default async function handler(req, res) {
                                 // 🔥 ФИКС: Записываем новое время в глобальный объект, чтобы оно не стерлось
                                 global.lastAlertTime = now; 
 
-                                const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}.\n\nПожалуйста, пополните счет: https://enter.pollinations.ai`;
-
+                                const alertText = `Уведомление от системы автоматизации. Текущий остаток на балансе Pollinations составляет: $${currentBalance}. Рекомендуется проверить личный кабинет на сайте enter.pollinations.ai для своевременного пополнения аккаунта.`;
                                 // 🔥 ШАГ 2: ЗАМЕНИЛИ FORMSPARK НА ЧИСТЫЙ NODEMAILER НАПРЯМУЮ ЧЕРЕЗ ЯНДЕКС
                                 console.log("📬 Лимит пройден. Отправка алерта на почту через Nodemailer...");
                                 
