@@ -1,6 +1,7 @@
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
 import { Buffer } from 'buffer';
+import nodemailer from 'nodemailer';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
@@ -160,13 +161,28 @@ export default async function handler(req, res) {
 
                                 const alertText = `🚨 ВНИМАНИЕ! Баланс Pollinations API на исходе! Осталось всего: $${currentBalance}.\n\nПожалуйста, пополните счет: https://enter.pollinations.ai`;
 
-                                console.log("📬 Лимит пройден. Отправка алерта в Formspark...");
-                                await fetch('https://submit-form.com/7MSGuX47l', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                                    body: JSON.stringify({ email: 'ariarikaty@gmail.com', message: alertText })
-                                }).then(r => console.log(`Formspark ответ: ${r.status}`))
-                                  .catch(e => console.error("Ошибка Formspark:", e));
+                                // 🔥 ШАГ 2: ЗАМЕНИЛИ FORMSPARK НА ЧИСТЫЙ NODEMAILER НАПРЯМУЮ ЧЕРЕЗ ЯНДЕКС
+                                console.log("📬 Лимит пройден. Отправка алерта на почту через Nodemailer...");
+                                
+                                const transporter = nodemailer.createTransport({
+                                    host: 'smtp.yandex.ru',
+                                    port: 465,
+                                    secure: true, 
+                                    auth: {
+                                        user: process.env.EMAIL_USER,
+                                        pass: process.env.EMAIL_PASS,
+                                    },
+                                });
+
+                                await transporter.sendMail({
+                                    from: `"Система Уведомлений" <${process.env.EMAIL_USER}>`, 
+                                    to: 'ariarikaty@gmail.com', // ⚠️ Твоя основная почта, куда придут письма
+                                    subject: '🚨 СРОЧНО: Баланс Pollinations API', 
+                                    text: alertText, 
+                                    html: `<b>${alertText.replace(/\n/g, '<br>')}</b>`, 
+                                })
+                                .then(() => console.log("✅ Письмо успешно отправлено напрямую через SMTP Яндекса!"))
+                                .catch(e => console.error("❌ Ошибка Nodemailer при отправке:", e));
 
                                 // --- ИНТЕГРАЦИЯ С ВК ---
                                 const VK_BOT_TOKEN = process.env.VK_BOT_TOKEN;
