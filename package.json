@@ -6,6 +6,6 @@
     "formidable": "^3.5.1",
     "fs": "0.0.1-security",
     "node-fetch": "^3.3.2",
-    "nodemailer": "^6.9.0
+    "nodemailer": "^6.9.0"
   }
 }
