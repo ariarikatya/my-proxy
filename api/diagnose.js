@@ -71,7 +71,7 @@ Kраткий уход: [1-2 предложения]
                         ]
                     }
                 ],
-                model: 'openai-fast' // Прописываем Gemini 2.5 Flash Lite из выпадающего списка
+                model: 'gpt-5.4-mini'
             })
         });
 
