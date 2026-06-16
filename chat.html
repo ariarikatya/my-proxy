@@ -10,12 +10,18 @@
 </head>
 <body>
     <script>
-    // 1. Стандартная конфигурация кнопки
+    // 1. Инициализация виджета чата
     window.amoSocialButtonConfig = {
         id: "447579",
         hash: "b95570f94bd347ecf353336f802ec8d904d3709371be22e197a9edf5acb108b4",
         locale: "ru",
-        inline: true
+        inline: true,
+        onlinechat: {
+            locale: {
+                extends: "ru",
+                compose_placeholder: "Задайте вопрос агроному здесь...",
+            }
+        }
     };
 
     (function(a,m,o,c,r,m){
@@ -26,15 +32,16 @@
         d.head&&d.head.appendChild(s);
     }(window,0,'amoSocialButton',0,0,'amo_social_button'));
 
-    // 2. ОФИЦИАЛЬНЫЙ АВТООТКРЫВАТЕЛЬ ЧАТА (из доки)
+    // 2. Логика автоматического открытия и передачи контекста через API
     amoSocialButton('onChatReady', function () {
+        // Официально открываем чат без имитации кликов
         amoSocialButton('runChatShow');
         
-        // 3. ПЕРЕДАЧА МЕТА-ДАННЫХ В БОТА (из доки)
+        // Передаем контекст "ИИ-Диагностика" прямо в метаданные чата
         if (window.amo_social_button && typeof window.amo_social_button.setMeta === 'function') {
             window.amo_social_button.setMeta({
                 bot_params: {
-                    from_page: "ИИ-Диагностика"
+                    "Источник_заявки": "ИИ-Диагностика болезней растения"
                 }
             });
         }
