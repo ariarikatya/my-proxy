@@ -10,7 +10,17 @@
 </head>
 <body>
     <script>
-    // 1. Инициализация виджета чата
+    // Функция для чтения параметров из URL фрейма
+    function getUrlParam(param) {
+        var urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(param);
+    }
+
+    // Определяем источник заявки (если пустой — ставим дефолт)
+    var currentSource = getUrlParam('source') === 'ai_diagnostics' 
+        ? "ИИ-Диагностика болезней растений (Клик 'Обратиться к человеку')" 
+        : "Основной чат на сайте";
+
     window.amoSocialButtonConfig = {
         id: "447579",
         hash: "b95570f94bd347ecf353336f802ec8d904d3709371be22e197a9edf5acb108b4",
@@ -19,7 +29,7 @@
         onlinechat: {
             locale: {
                 extends: "ru",
-                compose_placeholder: "Задайте вопрос агроному здесь...",
+                compose_placeholder: "Напишите ваш вопрос агроному здесь...",
             }
         }
     };
@@ -32,16 +42,14 @@
         d.head&&d.head.appendChild(s);
     }(window,0,'amoSocialButton',0,0,'amo_social_button'));
 
-    // 2. Логика автоматического открытия и передачи контекста через API
+    // Официальное автооткрытие чата и передача мета-данных
     amoSocialButton('onChatReady', function () {
-        // Официально открываем чат без имитации кликов
         amoSocialButton('runChatShow');
         
-        // Передаем контекст "ИИ-Диагностика" прямо в метаданные чата
         if (window.amo_social_button && typeof window.amo_social_button.setMeta === 'function') {
             window.amo_social_button.setMeta({
                 bot_params: {
-                    "Источник_заявки": "ИИ-Диагностика болезней растения"
+                    "Источник_заявки": currentSource
                 }
             });
         }
