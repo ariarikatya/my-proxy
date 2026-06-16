@@ -14,37 +14,21 @@
         a[m]={
             id:"447579",
             hash:"b95570f94bd347ecf353336f802ec8d904d3709371be22e197a9edf5acb108b4",
-            locale:"ru",
-            inline:true
+            locale:"ru"
         };
         a[o]=a[o]||function(){(a[o].q=a[o].q||[]).push(arguments)};
         a[o+'Config']=a[o+'Config']||{};
-        a[o+'Config'].is_open = true;
+        
+        // Передаем кастомные поля прямо в CRM
+        a[o+'Config'].fields = {
+            note: "Запрос из ИИ-диагностики болезней растений. Требуется консультация агронома."
+        };
         
         var d=a.document,s=d.createElement('script');
         s.async=true;s.id=m+'_script';
         s.src='https://gso.amocrm.ru/js/button.js';
         d.head&&d.head.appendChild(s);
     }(window,0,'amoSocialButton',0,0,'amo_social_button'));
-
-    // Скрипт авто-раскрытия и подстановки контекста
-    window.addEventListener('load', function() {
-        setTimeout(function() {
-            // 1. Ищем синюю круглую кнопку Амо и имитируем клик по ней
-            var amoBtn = document.querySelector('.amo-button-holder') || document.querySelector('[class*="button"]');
-            if (amoBtn) { amoBtn.click(); }
-
-            // 2. Находим поле ввода сообщения и вставляем туда стартовый маркер для Амо
-            setTimeout(function() {
-                var textarea = document.querySelector('textarea') || document.querySelector('[contenteditable="true"]');
-                if (textarea) {
-                    textarea.value = "[ИИ-Диагностика] Здравствуйте! Мне нужна консультация агронома по результатам анализа растения. ";
-                    // Триггерим событие изменения, чтобы кнопка отправки в Амо стала активной
-                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                }
-            }, 800);
-        }, 1500); // Даем Амо полторы секунды на загрузку структуры
-    });
     </script>
 </body>
 </html>
