@@ -10,25 +10,35 @@
 </head>
 <body>
     <script>
+    // 1. Стандартная конфигурация кнопки
+    window.amoSocialButtonConfig = {
+        id: "447579",
+        hash: "b95570f94bd347ecf353336f802ec8d904d3709371be22e197a9edf5acb108b4",
+        locale: "ru",
+        inline: true
+    };
+
     (function(a,m,o,c,r,m){
-        a[m]={
-            id:"447579",
-            hash:"b95570f94bd347ecf353336f802ec8d904d3709371be22e197a9edf5acb108b4",
-            locale:"ru"
-        };
         a[o]=a[o]||function(){(a[o].q=a[o].q||[]).push(arguments)};
-        a[o+'Config']=a[o+'Config']||{};
-        
-        // Передаем кастомные поля прямо в CRM
-        a[o+'Config'].fields = {
-            note: "Запрос из ИИ-диагностики болезней растений. Требуется консультация агронома."
-        };
-        
         var d=a.document,s=d.createElement('script');
         s.async=true;s.id=m+'_script';
         s.src='https://gso.amocrm.ru/js/button.js';
         d.head&&d.head.appendChild(s);
     }(window,0,'amoSocialButton',0,0,'amo_social_button'));
+
+    // 2. ОФИЦИАЛЬНЫЙ АВТООТКРЫВАТЕЛЬ ЧАТА (из доки)
+    amoSocialButton('onChatReady', function () {
+        amoSocialButton('runChatShow');
+        
+        // 3. ПЕРЕДАЧА МЕТА-ДАННЫХ В БОТА (из доки)
+        if (window.amo_social_button && typeof window.amo_social_button.setMeta === 'function') {
+            window.amo_social_button.setMeta({
+                bot_params: {
+                    from_page: "ИИ-Диагностика"
+                }
+            });
+        }
+    });
     </script>
 </body>
 </html>
