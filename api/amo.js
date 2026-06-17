@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 export default async function handler(req, res) {
     // 1. Разрешаем CORS для твоего домена
     res.setHeader('Access-Control-Allow-Credentials', true);
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Можно заменить на твой конкретный домен
+    res.setHeader('Access-Control-Allow-Origin', '*'); 
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
     res.setHeader(
         'Access-Control-Allow-Headers',
@@ -21,23 +21,9 @@ export default async function handler(req, res) {
     try {
         const { phone, name, note, quiz_name, email, address } = req.body;
 
-        // --- ЖЕСТКАЯ ОЧИСТКА ТЕЛЕФОНА НА СЛУЧАЙ КЭША В БРАУЗЕРЕ ---
-        let cleanPhone = phone || '';
-        if (cleanPhone) {
-            // 1. Убираем вообще любые пробельные символы по краям и внутри
-            cleanPhone = String(cleanPhone).trim();
-            // 2. Оставляем только цифры
-            let onlyDigits = cleanPhone.replace(/[^0-9]/g, '');
-            
-            // 3. Собираем идеальный формат номера
-            if (onlyDigits.startsWith('7')) {
-                cleanPhone = '+' + onlyDigits;
-            } else if (onlyDigits.startsWith('8')) {
-                cleanPhone = '+7' + onlyDigits.substring(1);
-            } else if (onlyDigits) {
-                cleanPhone = '+7' + onlyDigits;
-            }
-        }
+        // САМАЯ БЕЗОПАСНАЯ КОРРЕКЦИЯ: просто стираем пробел в начале строки, если он прилетел
+        // Если телефон пришел нормальный, строка останется на 100% исходной
+        const safePhone = phone ? String(phone).trim() : '';
 
         let noteParts = [];
         if (note) noteParts.push(note);
@@ -51,7 +37,7 @@ export default async function handler(req, res) {
         formData.append('form_id', '1259566');
         formData.append('hash', '169e0aa6a68725a7ee2241488dd4fb68');
         formData.append('fields[name_1]', name || 'Не указано');
-        formData.append('fields[582075_1][310085]', cleanPhone); // Подставили очищенный телефон
+        formData.append('fields[582075_1][310085]', safePhone); // Передаем оригинальную строку (без пробела на конце/начале)
         formData.append('fields[note_2]', fullNote);
 
         const amoResponse = await fetch('https://forms.amocrm.ru/queue/add', {
