@@ -19,10 +19,30 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
     try {
-        const { phone, name, note, quiz_name, email, address } = req.body;
+        // ЖЕЛЕЗНЫЙ ПАРСИНГ: проверяем, в каком виде пришли данные от квизов
+        let bodyData = req.body;
+        if (typeof req.body === 'string') {
+            try {
+                bodyData = JSON.parse(req.body);
+            } catch (e) {
+                // Если это была обычная URL-строка, преобразуем в объект
+                const params = new URLSearchParams(req.body);
+                bodyData = {};
+                params.forEach((value, key) => {
+                    bodyData[key] = value;
+                });
+            }
+        }
 
-        // САМАЯ БЕЗОПАСНАЯ КОРРЕКЦИЯ: просто стираем пробелы по краям, если они прилетели.
-        // Строка телефона (будь она с маской или без) останется оригинальной на 100%
+        // Вытаскиваем переменные из подготовленного объекта
+        const name = bodyData.name || 'Не указано';
+        const phone = bodyData.phone || '';
+        const note = bodyData.note || '';
+        const quiz_name = bodyData.quiz_name || '';
+        const email = bodyData.email || '';
+        const address = bodyData.address || '';
+
+        // Чистим телефон от случайных пробелов
         const safePhone = phone ? String(phone).trim() : '';
 
         // Красиво склеиваем примечание, чтобы не потерять ответы квиза
@@ -38,7 +58,7 @@ export default async function handler(req, res) {
         const formData = new URLSearchParams();
         formData.append('form_id', '1259566');
         formData.append('hash', '169e0aa6a68725a7ee2241488dd4fb68');
-        formData.append('fields[name_1]', name || 'Не указано');
+        formData.append('fields[name_1]', String(name).trim());
         formData.append('fields[582075_1][310085]', safePhone); // Передаем номер 
         formData.append('fields[note_2]', fullNote);
 
