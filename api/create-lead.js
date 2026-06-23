@@ -1,5 +1,7 @@
-export default async function handler(req, res) {
-    // 1. Настройка CORS-заголовков
+import https from 'https';
+
+export default function handler(req, res) {
+    // 1. Настройка CORS-заголовков (срабатывают сразу)
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*'); 
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -18,67 +20,89 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { imageUrl, diagnosis } = req.body;
+        const { imageUrl, diagnosis } = req.body || {};
 
-        // 🔐 Тянем настройки безопасности из Environment Variables на Vercel
         const SUBDOMAIN = process.env.AMO_SUBDOMAIN; 
         const AMO_TOKEN = process.env.AMO_TOKEN;
 
         if (!AMO_TOKEN || !SUBDOMAIN) {
-            throw new Error('Доступы amoCRM (AMO_SUBDOMAIN или AMO_TOKEN) не настроены в Vercel Variables');
+            return res.status(500).json({ success: false, error: 'Переменные окружения AMO не настроены в Vercel' });
         }
 
-        // Формируем запрос к amoCRM на создание сделки
-        const amoResponse = await fetch(`https://${SUBDOMAIN}.amocrm.ru/api/v4/leads/complex`, {
+        // Данные для отправки в amoCRM
+        const postData = JSON.stringify([
+            {
+                name: "Заявка с сайта: Нужна помощь человека",
+                price: 0,
+                _embedded: {
+                    tags: [
+                        { name: "ИИ-Диагностика" },
+                        { name: "Кликнул_человек" }
+                    ]
+                },
+                custom_fields_values: [
+                    {
+                        field_name: "Ссылка на фото", 
+                        values: [{ value: imageUrl || '' }]
+                    },
+                    {
+                        field_name: "Результат анализа ИИ", 
+                        values: [{ value: diagnosis || '' }]
+                    }
+                ]
+            }
+        ]);
+
+        // Настройки запроса через встроенный модуль https
+        const options = {
+            hostname: `${SUBDOMAIN}.amocrm.ru`,
+            port: 443,
+            path: '/api/v4/leads/complex',
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${AMO_TOKEN}`
-            },
-            body: JSON.stringify([
-                {
-                    name: "Заявка с сайта: Нужна помощь человека",
-                    price: 0,
-                    _embedded: {
-                        tags: [
-                            { name: "ИИ-Диагностика" },
-                            { name: "Кликнул_человек" }
-                        ]
-                    },
-                    custom_fields_values: [
-                        {
-                            field_name: "Ссылка на фото", 
-                            values: [{ value: imageUrl }]
-                        },
-                        {
-                            field_name: "Результат анализа ИИ", 
-                            values: [{ value: diagnosis }]
-                        }
-                    ]
+                'Authorization': `Bearer ${AMO_TOKEN}`,
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        };
+
+        const amoReq = https.request(options, (amoRes) => {
+            let responseBody = '';
+
+            amoRes.on('data', (chunk) => {
+                responseBody += chunk;
+            });
+
+            amoRes.on('end', () => {
+                if (amoRes.statusCode >= 200 && amoRes.statusCode < 300) {
+                    try {
+                        const amoData = JSON.parse(responseBody);
+                        const leadId = amoData[0]?.id;
+                        const leadUrl = `https://${SUBDOMAIN}.amocrm.ru/leads/detail/${leadId}`;
+                        
+                        return res.status(200).json({
+                            success: true,
+                            leadId: leadId,
+                            leadUrl: leadUrl
+                        });
+                    } catch (e) {
+                        return res.status(500).json({ success: false, error: 'Ошибка парсинга ответа amoCRM' });
+                    }
+                } else {
+                    return res.status(amoRes.statusCode).json({ success: false, error: `amoCRM вернул статус ${amoRes.statusCode}`, details: responseBody });
                 }
-            ])
-        ]);
-
-        if (!amoResponse.ok) {
-            const errText = await amoResponse.text();
-            throw new Error(`Ошибка amoCRM: ${amoResponse.status} - ${errText}`);
-        }
-
-        const amoData = await amoResponse.json();
-        
-        // Извлекаем id созданной сделки из ответа амо
-        const leadId = amoData[0]?.id;
-        const leadUrl = `https://${SUBDOMAIN}.amocrm.ru/leads/detail/${leadId}`;
-
-        // Возвращаем успешный ответ фронтенду
-        return res.status(200).json({
-            success: true,
-            leadId: leadId,
-            leadUrl: leadUrl
+            });
         });
 
+        amoReq.on('error', (error) => {
+            return res.status(500).json({ success: false, error: error.message });
+        });
+
+        // Записываем данные в поток и закрываем запрос
+        amoReq.write(postData);
+        amoReq.end();
+
     } catch (error) {
-        console.error("Ошибка при создании лида:", error);
         return res.status(500).json({ success: false, error: error.message });
     }
 }
