@@ -18,17 +18,13 @@ export default function handler(req, res) {
             return res.status(500).json({ success: false, error: 'Переменные окружения AMO не настроены' });
         }
 
+        // Чистые метаданные формы, которые ТОЧНО принимает amoCRM
         const metadataConfig = {
             form_id: "ai_form_01",
             form_name: "Форма ИИ-диагностики",
             form_page: "https://uslugi-sadovnika.ru/",
             form_sent_at: Math.floor(Date.now() / 1000)
         };
-
-        // Если получили ID — привязываем чат к форме
-        if (visitorUid) {
-            metadataConfig.client_id = visitorUid;
-        }
 
         const unsortedData = JSON.stringify([
             {
@@ -37,13 +33,19 @@ export default function handler(req, res) {
                 created_at: Math.floor(Date.now() / 1000),
                 metadata: metadataConfig,
                 _embedded: {
+                    // Оставляем примечание с кликабельным текстом
                     notes: [
                         {
                             note_type: "common",
                             params: {
-                                // Оставляем чистый текст — в примечаниях amoCRM обычные http-ссылки автоматически становятся кликабельными!
                                 text: `🌿 РЕЗУЛЬТАТ ИИ-ДИАГНОСТИКИ:\n\n📷 Ссылка на фото: ${imageUrl || 'Не загружено'}\n\n📝 Анализ: ${diagnosis || 'Нет описания'}`
                             }
+                        }
+                    ],
+                    // Передаем чат без ломающих сокет параметров сообщений
+                    chats: [
+                        {
+                            client_id: visitorUid || `guest_${Date.now()}`
                         }
                     ],
                     leads: [
