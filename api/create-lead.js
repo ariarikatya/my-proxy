@@ -81,27 +81,29 @@ export default function handler(req, res) {
                         
                         // 2. 🔥 БОНУСНЫЙ ШАГ: Принудительно пишем текстовое ПРИМЕЧАНИЕ в карточку,
                         // которое дублируется в события диалога
-                        const noteData = JSON.stringify([
-                            {
-                                entity_id: leadId,
-                                note_type: "common",
-                                params: {
-                                    text: `ℹ️ Ссылка на созданную карточку сделки: ${leadUrl}\nРастение: ${imageUrl || 'Нет фото'}`
-                                }
-                            }
-                        ]);
+                        // 2. 🔥 Системное сообщение ЖЕЛЕЗНО внутрь чата (видит ТОЛЬКО менеджер)
+const noteData = JSON.stringify([
+    {
+        entity_id: leadId,
+        note_type: "service_message", // Этот тип отправляет инфо прямо в чат к менеджеру
+        params: {
+            text: `🤖 Робот: Создана сделка по ИИ-диагностике!\n👉 Ссылка для менеджера: ${leadUrl}`,
+            service: "Онлайн-чат"
+        }
+    }
+]);
 
-                        const noteOptions = {
-                            hostname: `${SUBDOMAIN}.amocrm.ru`,
-                            port: 443,
-                            path: `/api/v4/leads/${leadId}/notes`,
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Bearer ${AMO_TOKEN}`,
-                                'Content-Length': Buffer.byteLength(noteData)
-                            }
-                        };
+const noteOptions = {
+    hostname: `${SUBDOMAIN}.amocrm.ru`,
+    port: 443,
+    path: `/api/v4/leads/${leadId}/notes`,
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${AMO_TOKEN}`,
+        'Content-Length': Buffer.byteLength(noteData)
+    }
+};
 
                         const noteReq = https.request(noteOptions, () => {
                             // Возвращаем финальный успешный ответ фронтенду
