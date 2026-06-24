@@ -35,7 +35,9 @@ export default function handler(req, res) {
                 created_at: Math.floor(Date.now() / 1000),
                 metadata: {
                     form_id: "ai_form_01",
-                    form_name: "Форма ИИ-диагностики"
+                    form_name: "Форма ИИ-диагностики",
+                    form_page: "https://uslugi-sadovnika.ru/", // 🔥 Добавили адрес страницы сайта
+                    form_sent_at: Math.floor(Date.now() / 1000) // 🔥 Добавили время отправки в секундах
                 },
                 _embedded: {
                     leads: [
