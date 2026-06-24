@@ -27,7 +27,7 @@ export default function handler(req, res) {
             return res.status(500).json({ success: false, error: 'Переменные окружения AMO не настроены в Vercel' });
         }
 
-        // Структура для падения СТРОГО в Неразобранное через метод Веб-форм
+        // Правильная структура веб-формы для заполнения кастомных полей в Неразобранном
         const unsortedData = JSON.stringify([
             {
                 source_uid: `ai_diag_${Date.now()}`,
@@ -40,7 +40,6 @@ export default function handler(req, res) {
                     form_sent_at: Math.floor(Date.now() / 1000)
                 },
                 _embedded: {
-                    // Добавляем примечание прямо в карточку
                     notes: [
                         {
                             note_type: "common",
@@ -51,21 +50,27 @@ export default function handler(req, res) {
                     ],
                     leads: [
                         {
-                            name: "Заявка с сайта: ИИ-Диагностика",
+                            name: "Заявка с сайта: Нужна помощь человека",
                             price: 0,
                             _embedded: {
                                 tags: [
-                                    { name: "ИИ-Диагностика" }
+                                    { name: "ИИ-Диагностика" },
+                                    { name: "Кликнул_человек" }
                                 ]
                             },
+                            // 🔥 ПРАВИЛЬНЫЙ ФОРМАТ ПЕРЕДАЧИ ДЛЯ ФОРМ (через ID как строку внутри объекта)
                             custom_fields_values: [
                                 {
-                                    field_id: 974979, // Поле "Ссылка на фото"
-                                    values: [{ value: imageUrl || '' }]
+                                    field_id: 974979, 
+                                    values: [
+                                        { value: imageUrl || '' }
+                                    ]
                                 },
                                 {
-                                    field_id: 974983, // Поле "Результат анализа ИИ"
-                                    values: [{ value: diagnosis || '' }]
+                                    field_id: 974983,
+                                    values: [
+                                        { value: diagnosis || '' }
+                                    ]
                                 }
                             ]
                         }
@@ -92,18 +97,7 @@ export default function handler(req, res) {
 
             amoRes.on('end', () => {
                 if (amoRes.statusCode >= 200 && amoRes.statusCode < 300) {
-                    try {
-                        const amoData = JSON.parse(responseBody);
-                        const unsortedUid = amoData._embedded?.unsorted?.[0]?.uid || '';
-                        
-                        return res.status(200).json({
-                            success: true,
-                            message: "Заявка успешно отправлена в Неразобранное",
-                            uid: unsortedUid
-                        });
-                    } catch (e) {
-                        return res.status(200).json({ success: true, message: "Отправлено в Неразобранное" });
-                    }
+                    return res.status(200).json({ success: true, message: "Заявка отправлена" });
                 } else {
                     return res.status(amoRes.statusCode).json({ success: false, error: `Статус ${amoRes.statusCode}`, details: responseBody });
                 }
