@@ -41,15 +41,15 @@ export default function handler(req, res) {
                     ]
                 },
                 custom_fields_values: [
-                    {
-                        field_name: "Ссылка на фото", 
-                        values: [{ value: imageUrl || '' }]
-                    },
-                    {
-                        field_name: "Результат анализа ИИ", 
-                        values: [{ value: diagnosis || '' }]
-                    }
-                ]
+    {
+        field_id: 974979, 
+        values: [{ value: imageUrl || '' }]
+    },
+    {
+        field_id: 974981, 
+        values: [{ value: diagnosis || '' }]
+    }
+]
             }
         ]);
 
