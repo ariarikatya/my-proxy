@@ -25,12 +25,11 @@ export default function handler(req, res) {
             form_sent_at: Math.floor(Date.now() / 1000)
         };
 
-        // Если получили ID чата — жестко привязываем его к карточке
+        // Если получили ID — привязываем чат к форме
         if (visitorUid) {
             metadataConfig.client_id = visitorUid;
         }
 
-        // Формируем структуру. Вместо notes мы шлем входящее сообщение в чат!
         const unsortedData = JSON.stringify([
             {
                 source_uid: `ai_diag_${Date.now()}`,
@@ -38,18 +37,13 @@ export default function handler(req, res) {
                 created_at: Math.floor(Date.now() / 1000),
                 metadata: metadataConfig,
                 _embedded: {
-                    // 🔥 ПЕРЕНОСИМ ИНФУ В ОБЫЧНОЕ КЛИКАБЕЛЬНОЕ ТЕКСТОВОЕ СООБЩЕНИЕ
-                    chats: [
+                    notes: [
                         {
-                            client_id: visitorUid || `guest_${Date.now()}`,
-                            origin: "custom",
-                            messages: [
-                                {
-                                    text: `🌿 РЕЗУЛЬТАТ ИИ-ДИАГНОСТИКИ:\n\n📷 Ссылка на фото: ${imageUrl || 'Не загружено'}\n\n📝 Анализ: ${diagnosis || 'Нет описания'}`,
-                                    type: "text",
-                                    created_at: Math.floor(Date.now() / 1000)
-                                }
-                            ]
+                            note_type: "common",
+                            params: {
+                                // Оставляем чистый текст — в примечаниях amoCRM обычные http-ссылки автоматически становятся кликабельными!
+                                text: `🌿 РЕЗУЛЬТАТ ИИ-ДИАГНОСТИКИ:\n\n📷 Ссылка на фото: ${imageUrl || 'Не загружено'}\n\n📝 Анализ: ${diagnosis || 'Нет описания'}`
+                            }
                         }
                     ],
                     leads: [
@@ -86,7 +80,7 @@ export default function handler(req, res) {
             amoRes.on('data', (chunk) => { responseBody += chunk; });
             amoRes.on('end', () => {
                 if (amoRes.statusCode >= 200 && amoRes.statusCode < 300) {
-                    return res.status(200).json({ success: true, message: "Связано успешно" });
+                    return res.status(200).json({ success: true, message: "Форма успешно создана" });
                 } else {
                     return res.status(amoRes.statusCode).json({ success: false, details: responseBody });
                 }
