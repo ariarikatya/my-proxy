@@ -30,16 +30,25 @@ export default function handler(req, res) {
         // Структура для падения СТРОГО в Неразобранное через метод Веб-форм
         const unsortedData = JSON.stringify([
             {
-                source_uid: `ai_diag_${Date.now()}`, // Уникальный ID заявки
+                source_uid: `ai_diag_${Date.now()}`,
                 source_name: "ИИ-Диагностика на сайте",
                 created_at: Math.floor(Date.now() / 1000),
                 metadata: {
                     form_id: "ai_form_01",
                     form_name: "Форма ИИ-диагностики",
-                    form_page: "https://uslugi-sadovnika.ru/", // 🔥 Добавили адрес страницы сайта
-                    form_sent_at: Math.floor(Date.now() / 1000) // 🔥 Добавили время отправки в секундах
+                    form_page: "https://uslugi-sadovnika.ru/",
+                    form_sent_at: Math.floor(Date.now() / 1000)
                 },
                 _embedded: {
+                    // 🔥 Добавляем примечание прямо к заявке, оно отобразится в ленте
+                    notes: [
+                        {
+                            note_type: "common",
+                            params: {
+                                text: `🌿 РЕЗУЛЬТАТ ИИ-ДИАГНОСТИКИ:\n\n📷 Ссылка на фото: ${imageUrl || 'Не загружено'}\n\n📝 Анализ: ${diagnosis || 'Нет описания'}`
+                            }
+                        }
+                    ],
                     leads: [
                         {
                             name: "Заявка с сайта: Нужна помощь человека",
