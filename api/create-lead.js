@@ -27,39 +27,52 @@ export default function handler(req, res) {
             return res.status(500).json({ success: false, error: 'Переменные окружения AMO не настроены в Vercel' });
         }
 
-        // 1. Создаем обычную сделку (через стандартный метод, чтобы она шла по правильной логике)
-        const postData = JSON.stringify([
+        // Структура для падения СТРОГО в Неразобранное через метод Веб-форм
+        const unsortedData = JSON.stringify([
             {
-                name: "Заявка с сайта: Нужна помощь человека",
-                price: 0,
-                _embedded: {
-                    tags: [
-                        { name: "ИИ-Диагностика" },
-                        { name: "Кликнул_человек" }
-                    ]
+                source_uid: `ai_diag_${Date.now()}`, // Уникальный ID заявки
+                source_name: "ИИ-Диагностика на сайте",
+                created_at: Math.floor(Date.now() / 1000),
+                metadata: {
+                    form_id: "ai_form_01",
+                    form_name: "Форма ИИ-диагностики"
                 },
-                custom_fields_values: [
-                    {
-                        field_id: 974979, // Ссылка на фото
-                        values: [{ value: imageUrl || '' }]
-                    },
-                    {
-                        field_id: 974983, // Результат анализа ИИ
-                        values: [{ value: diagnosis || '' }]
-                    }
-                ]
+                _embedded: {
+                    leads: [
+                        {
+                            name: "Заявка с сайта: Нужна помощь человека",
+                            price: 0,
+                            _embedded: {
+                                tags: [
+                                    { name: "ИИ-Диагностика" },
+                                    { name: "Кликнул_человек" }
+                                ]
+                            },
+                            custom_fields_values: [
+                                {
+                                    field_id: 974979, // Ссылка на фото
+                                    values: [{ value: imageUrl || '' }]
+                                },
+                                {
+                                    field_id: 974983, // Результат анализа ИИ
+                                    values: [{ value: diagnosis || '' }]
+                                }
+                            ]
+                        }
+                    ]
+                }
             }
         ]);
 
         const options = {
             hostname: `${SUBDOMAIN}.amocrm.ru`,
             port: 443,
-            path: '/api/v4/leads', 
+            path: '/api/v4/leads/unsorted/forms', // 🔥 Меняем путь на Неразобранное форм
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${AMO_TOKEN}`,
-                'Content-Length': Buffer.byteLength(postData)
+                'Content-Length': Buffer.byteLength(unsortedData)
             }
         };
 
@@ -71,54 +84,16 @@ export default function handler(req, res) {
                 if (amoRes.statusCode >= 200 && amoRes.statusCode < 300) {
                     try {
                         const amoData = JSON.parse(responseBody);
-                        const leadId = amoData._embedded?.leads[0]?.id || amoData[0]?.id;
+                        // Для unsorted структура ответа немного другая, вытаскиваем UID
+                        const unsortedUid = amoData._embedded?.unsorted?.[0]?.uid || '';
                         
-                        if (!leadId) {
-                            return res.status(200).json({ success: true, text: 'Сделка создана, но ID не получен' });
-                        }
-
-                        const leadUrl = `https://${SUBDOMAIN}.amocrm.ru/leads/detail/${leadId}`;
-                        
-                        // 2. 🔥 БОНУСНЫЙ ШАГ: Принудительно пишем текстовое ПРИМЕЧАНИЕ в карточку,
-                        // которое дублируется в события диалога
-                        // 2. 🔥 Системное сообщение ЖЕЛЕЗНО внутрь чата (видит ТОЛЬКО менеджер)
-const noteData = JSON.stringify([
-    {
-        entity_id: leadId,
-        note_type: "service_message", // Этот тип отправляет инфо прямо в чат к менеджеру
-        params: {
-            text: `🤖 Робот: Создана сделка по ИИ-диагностике!\n👉 Ссылка для менеджера: ${leadUrl}`,
-            service: "Онлайн-чат"
-        }
-    }
-]);
-
-const noteOptions = {
-    hostname: `${SUBDOMAIN}.amocrm.ru`,
-    port: 443,
-    path: `/api/v4/leads/${leadId}/notes`,
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${AMO_TOKEN}`,
-        'Content-Length': Buffer.byteLength(noteData)
-    }
-};
-
-                        const noteReq = https.request(noteOptions, () => {
-                            // Возвращаем финальный успешный ответ фронтенду
-                            return res.status(200).json({
-                                success: true,
-                                leadId: leadId,
-                                leadUrl: leadUrl
-                            });
+                        return res.status(200).json({
+                            success: true,
+                            message: "Заявка успешно отправлена в Неразобранное",
+                            uid: unsortedUid
                         });
-
-                        noteReq.write(noteData);
-                        noteReq.end();
-
                     } catch (e) {
-                        return res.status(500).json({ success: false, error: 'Ошибка парсинга сделки' });
+                        return res.status(200).json({ success: true, message: "Отправлено в Неразобранное (ответ принят)" });
                     }
                 } else {
                     return res.status(amoRes.statusCode).json({ success: false, error: `Статус ${amoRes.statusCode}`, details: responseBody });
@@ -130,7 +105,7 @@ const noteOptions = {
             return res.status(500).json({ success: false, error: error.message });
         });
 
-        amoReq.write(postData);
+        amoReq.write(unsortedData);
         amoReq.end();
 
     } catch (error) {
