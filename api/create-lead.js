@@ -46,7 +46,7 @@ export default function handler(req, res) {
         values: [{ value: imageUrl || '' }]
     },
     {
-        field_id: 974981, 
+        field_id: 974983, 
         values: [{ value: diagnosis || '' }]
     }
 ]
