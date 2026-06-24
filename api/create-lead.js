@@ -40,7 +40,7 @@ export default function handler(req, res) {
                     form_sent_at: Math.floor(Date.now() / 1000)
                 },
                 _embedded: {
-                    // 🔥 Добавляем примечание прямо к заявке, оно отобразится в ленте
+                    // Добавляем примечание прямо в карточку
                     notes: [
                         {
                             note_type: "common",
@@ -51,21 +51,20 @@ export default function handler(req, res) {
                     ],
                     leads: [
                         {
-                            name: "Заявка с сайта: Нужна помощь человека",
+                            name: "Заявка с сайта: ИИ-Диагностика",
                             price: 0,
                             _embedded: {
                                 tags: [
-                                    { name: "ИИ-Диагностика" },
-                                    { name: "Кликнул_человек" }
+                                    { name: "ИИ-Диагностика" }
                                 ]
                             },
                             custom_fields_values: [
                                 {
-                                    field_id: 974979, // Ссылка на фото
+                                    field_id: 974979, // Поле "Ссылка на фото"
                                     values: [{ value: imageUrl || '' }]
                                 },
                                 {
-                                    field_id: 974983, // Результат анализа ИИ
+                                    field_id: 974983, // Поле "Результат анализа ИИ"
                                     values: [{ value: diagnosis || '' }]
                                 }
                             ]
@@ -78,7 +77,7 @@ export default function handler(req, res) {
         const options = {
             hostname: `${SUBDOMAIN}.amocrm.ru`,
             port: 443,
-            path: '/api/v4/leads/unsorted/forms', // 🔥 Меняем путь на Неразобранное форм
+            path: '/api/v4/leads/unsorted/forms', 
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -95,7 +94,6 @@ export default function handler(req, res) {
                 if (amoRes.statusCode >= 200 && amoRes.statusCode < 300) {
                     try {
                         const amoData = JSON.parse(responseBody);
-                        // Для unsorted структура ответа немного другая, вытаскиваем UID
                         const unsortedUid = amoData._embedded?.unsorted?.[0]?.uid || '';
                         
                         return res.status(200).json({
@@ -104,7 +102,7 @@ export default function handler(req, res) {
                             uid: unsortedUid
                         });
                     } catch (e) {
-                        return res.status(200).json({ success: true, message: "Отправлено в Неразобранное (ответ принят)" });
+                        return res.status(200).json({ success: true, message: "Отправлено в Неразобранное" });
                     }
                 } else {
                     return res.status(amoRes.statusCode).json({ success: false, error: `Статус ${amoRes.statusCode}`, details: responseBody });
