@@ -18,7 +18,8 @@ export default function handler(req, res) {
     }
 
     try {
-        const { imageUrl, diagnosis } = req.body || {};
+        // 🔥 ПРИНИМАЕМ visitorUid С ФРОНТЕНДА
+        const { imageUrl, diagnosis, visitorUid } = req.body || {};
 
         const SUBDOMAIN = process.env.AMO_SUBDOMAIN; 
         const AMO_TOKEN = process.env.AMO_TOKEN;
@@ -27,18 +28,26 @@ export default function handler(req, res) {
             return res.status(500).json({ success: false, error: 'Переменные окружения AMO не настроены в Vercel' });
         }
 
-        // Правильная структура веб-формы для заполнения кастомных полей в Неразобранном
+        // Формируем структуру Неразобранного
+        const metadataConfig = {
+            form_id: "ai_form_01",
+            form_name: "Форма ИИ-диагностики",
+            form_page: "https://uslugi-sadovnika.ru/",
+            form_sent_at: Math.floor(Date.now() / 1000)
+        };
+
+        // 🔥 МАГИЯ СКЛЕЙКИ: Если с фронта пришел ID чата, добавляем его в метаданные
+        // amoCRM увидит client_id и автоматически объединит чат и эту форму в одну карточку!
+        if (visitorUid) {
+            metadataConfig.client_id = visitorUid;
+        }
+
         const unsortedData = JSON.stringify([
             {
                 source_uid: `ai_diag_${Date.now()}`,
                 source_name: "ИИ-Диагностика на сайте",
                 created_at: Math.floor(Date.now() / 1000),
-                metadata: {
-                    form_id: "ai_form_01",
-                    form_name: "Форма ИИ-диагностики",
-                    form_page: "https://uslugi-sadovnika.ru/",
-                    form_sent_at: Math.floor(Date.now() / 1000)
-                },
+                metadata: metadataConfig, // Используем обновленные метаданные с client_id
                 _embedded: {
                     notes: [
                         {
@@ -58,7 +67,6 @@ export default function handler(req, res) {
                                     { name: "Кликнул_человек" }
                                 ]
                             },
-                            // 🔥 ПРАВИЛЬНЫЙ ФОРМАТ ПЕРЕДАЧИ ДЛЯ ФОРМ (через ID как строку внутри объекта)
                             custom_fields_values: [
                                 {
                                     field_id: 974979, 
