@@ -12,27 +12,32 @@ export default async function handler(req, res) {
     const AMO_SUBDOMAIN = process.env.AMO_SUBDOMAIN;
 
     try {
-        // Даем Амо 3 секунды, чтобы её встроенный чат успел создать сделку в Неразобранном
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        // Шаг 1. Ищем сделку, в которую робот Амо только что записал этот ym_uid
+        // Шаг 1. Ищем сделку по ym_uid
         const searchResponse = await fetch(`https://${AMO_SUBDOMAIN}.amocrm.ru/api/v4/leads?query=${ym_uid}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${AMO_TOKEN}` }
         });
 
+        // Если Амо ответила 204 (ничего не найдено), отдаем статус 200, чтобы фронт не падал
+        if (searchResponse.status === 204) {
+            return res.status(200).json({ 
+                success: false, 
+                message: "Сделка чата еще не создана. Данные обновятся, как только клиент напишет первое сообщение." 
+            });
+        }
+
         if (!searchResponse.ok) {
-            throw new Error(`Ошибка поиска сделки: ${searchResponse.statusText}`);
+            throw new Error(`Амо вернула ошибку: ${searchResponse.status}`);
         }
 
         const searchData = await searchResponse.json();
         if (!searchData || !searchData._embedded || searchData._embedded.leads.length === 0) {
-            return res.status(200).json({ success: false, message: "Сделка еще не создана чатом, повторите позже." });
+            return res.status(200).json({ success: false, message: "Сделка не найдена." });
         }
 
         const leadId = searchData._embedded.leads[0].id;
 
-        // Шаг 2. Записываем данные ИИ прямо в найденную сделку по ID её полей!
+        // Шаг 2. Записываем данные в кастомные поля найденной сделки
         const updateResponse = await fetch(`https://${AMO_SUBDOMAIN}.amocrm.ru/api/v4/leads/${leadId}`, {
             method: 'PATCH',
             headers: {
@@ -54,12 +59,13 @@ export default async function handler(req, res) {
         });
 
         if (!updateResponse.ok) {
-            throw new Error(`Ошибка обновления полей: ${updateResponse.statusText}`);
+            throw new Error(`Ошибка обновления полей: ${updateResponse.status}`);
         }
 
         return res.status(200).json({ success: true, message: "Данные успешно привязаны к сделке чата!" });
 
     } catch (error) {
+        // Ловим любые синтаксические ошибки JSON или сети, отдавая 500, но с понятным текстом
         return res.status(500).json({ success: false, error: error.message });
     }
 }
