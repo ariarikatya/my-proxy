@@ -22,7 +22,10 @@ export default async function handler(req, res) {
   const url = `https://amojo.amocrm.ru/v2/origin/custom/${channelId}/connect`;
   const date = new Date().toUTCString();
   
-  const body = JSON.stringify({ account_id: accountId });
+  const body = JSON.stringify({ 
+  account_id: accountId,
+  secret: channelSecret 
+});
   const contentMd5 = crypto.createHash('md5').update(body).digest('hex');
   
   // Собираем строку для подписи строго по документации API чатов
