@@ -1,11 +1,11 @@
 export default async function handler(req, res) {
-    // 1. Разрешаем CORS для твоего домена (или ставим '*', чтобы пускало отовсюду)
+    // 1. Разрешаем CORS, чтобы твой фронтенд мог слать сюда запросы
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
     res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization');
 
-    // 2. Обязательно отвечаем 200 OK на предварительный preflight-запрос OPTIONS
+    // Отвечаем 200 OK на предварительный запрос OPTIONS от браузера
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -16,17 +16,29 @@ export default async function handler(req, res) {
     
     const { visitor_uid, text } = req.body;
 
+    // ⚙️ Автоматически забираем переменные, которые ты настроила в панели Vercel
+    const AMO_TOKEN = process.env.AMO_TOKEN;
+    const AMO_CHANNEL_ID = process.env.AMO_CHANNEL_ID;
+    const AMO_SUBDOMAIN = process.env.AMO_SUBDOMAIN;
+
+    // Проверяем, что Vercel видит эти переменные
+    if (!AMO_TOKEN || !AMO_CHANNEL_ID || !AMO_SUBDOMAIN) {
+        return res.status(500).json({ 
+            success: false, 
+            error: "В настройках Vercel не найдены AMO_TOKEN, AMO_CHANNEL_ID или AMO_SUBDOMAIN" 
+        });
+    }
+
     try {
-        // Запрос к amoCRM Chats API для отправки сообщения в существующий диалог
-        // Используем официальный канал, привязанный к твоему аккаунту
-        const amoResponse = await fetch(`https://amocrm.ru/api/v2/chats/incoming`, {
+        // Отправляем сообщение напрямую в нужный чат amoCRM
+        const amoResponse = await fetch(`https://${AMO_SUBDOMAIN}.amocrm.ru/api/v2/chats/incoming`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ТВОЙ_AMO_ACCESS_TOKEN`
+                'Authorization': `Bearer ${AMO_TOKEN}`
             },
             body: JSON.stringify({
-                receiver_id: "ID_ТВОЕГО_КАНАЛА_ЧАТА",
+                receiver_id: AMO_CHANNEL_ID,
                 visitor: {
                     uid: visitor_uid
                 },
@@ -36,8 +48,14 @@ export default async function handler(req, res) {
                 }
             })
         });
-        // Временный ответ для теста фронтенда:
-        return res.status(200).json({ success: true, message: "CORS пройден, данные получены на бэкенде!" });
+
+        const amoData = await amoResponse.json();
+
+        if (!amoResponse.ok) {
+            throw new Error(JSON.stringify(amoData));
+        }
+        
+        return res.status(200).json({ success: true, data: amoData });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }
