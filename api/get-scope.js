@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   // Переменные окружения Vercel
   const CHANNEL_ID = process.env.AMO_CHANNEL_ID;
   const CHANNEL_SECRET = process.env.AMO_CHANNEL_SECRET;
-  const ACCOUNT_ID = "29315698"; // ID твоего аккаунта из скриншота
+  const ACCOUNT_ID = "29315968"; // ID твоего аккаунта из скриншота
 
   if (!CHANNEL_ID || !CHANNEL_SECRET) {
     return res.status(500).json({ 
