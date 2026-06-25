@@ -18,14 +18,15 @@ export default async function handler(req, res) {
   const url = `https://amojo.amocrm.ru${path}`;
 
   // Максимально простое тело без пробелов, чтобы MD5 совпал на 100%
-  const requestBody = JSON.stringify({}); 
+  // Тело запроса строго в одну строчку без лишних пробелов
+  const requestBody = '{"account_id":"29315968"}'; 
 
   const date = new Date().toUTCString();
   const contentType = 'application/json';
 
-  // Хэш от "{}" всегда должен быть: 99914b932bd37a50b983c5e7c90ae93b
+  // Считаем MD5 от этой конкретной строки
   const checkSum = crypto.createHash('md5').update(requestBody).digest('hex').toLowerCase();
-
+  
   // Собираем строго по спецификации amoCRM: METHOD\nMD5\nCONTENT_TYPE\nDATE\nPATH
   const signatureRawString = [
     'POST',
