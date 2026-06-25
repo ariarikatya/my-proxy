@@ -26,7 +26,6 @@ export default function handler(req, res) {
                 metadata: {
                     form_id: "ai_form_01",
                     form_name: "Форма ИИ-диагностики",
-                    // 🔥 Передаем ссылку на фото сюда — амо делает это поле КЛИКАБЕЛЬНЫМ в Неразобранном
                     form_page: imageUrl || "https://uslugi-sadovnika.ru/",
                     form_sent_at: Math.floor(Date.now() / 1000)
                 },
@@ -35,7 +34,8 @@ export default function handler(req, res) {
                         {
                             note_type: "common",
                             params: {
-                                text: `🌿 РЕЗУЛЬТАТ ИИ-ДИАГНОСТИКИ:\n\n📷 Фото: ${imageUrl || 'Не загружено'}\n\n📝 Анализ: ${diagnosis || 'Нет описания'}\n\nПользователь запросил помощь человека.`
+                                // 🔥 Всё объединено в одно четкое сообщение
+                                text: `📷 Фотография растения: ${imageUrl || 'Не загружено'}\n🤖 Результат от ИИ: ${diagnosis || 'Нет описания'}`
                             }
                         }
                     ],
