@@ -16,22 +16,22 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "API key is missing in Vercel settings" });
     }
 
-    // Твой словарь для переименования моделей под заказчика
+    // Сокращенный словарь названий моделей
     const MODEL_NAMES = {
-        'klein': 'Генератор ландшафтного дизайна',
+        'klein': 'Ландшафтный дизайн',
         'gpt-image-2': 'Чертеж дизайна',
-        'gpt-5.4-mini': 'Распознавание и помощь по растениям',
-        'gpt-5.4-mini-2026-03-17': 'Распознавание и помощь по растениям', // Учитываем полную версию с датой
-        'openai-fast': 'Быстрый чат-ассистент',
-        'gemini-fast': 'Анализ документов'
+        'gpt-5.4-mini': 'Распознавание растений',
+        'gpt-5.4-mini-2026-03-17': 'Распознавание растений'
     };
 
+    // Список тестовых моделей, которые нужно полностью скрыть
+    const IGNORED_MODELS = ['openai-fast', 'gemini-fast'];
+
     try {
-        // Делаем параллельные запросы к нужным эндпоинтам Pollinations
         const [balanceRes, dailyRes, usageRes] = await Promise.all([
             fetch('https://gen.pollinations.ai/account/balance', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
             fetch('https://gen.pollinations.ai/account/usage/daily?days=30', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
-            fetch('https://gen.pollinations.ai/account/usage?limit=10', { headers: { 'Authorization': `Bearer ${API_KEY}` } })
+            fetch('https://gen.pollinations.ai/account/usage?limit=20', { headers: { 'Authorization': `Bearer ${API_KEY}` } }) // увеличен лимит, чтобы после фильтрации остались элементы
         ]);
 
         if (!balanceRes.ok || !dailyRes.ok || !usageRes.ok) {
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
         // 1. Текущий баланс
         const currentBalance = balanceData.balance !== undefined ? balanceData.balance : 0.00;
 
-        // 2. Расчет расходов за сегодня и 30 дней
+        // 2. Расчет расходов за сегодня и 30 дней с фильтрацией тестов
         const todayStr = new Date().toISOString().split('T')[0];
         let spentToday = 0;
         let spentMonth = 0;
@@ -53,6 +53,11 @@ export default async function handler(req, res) {
 
         if (dailyData.usage && Array.isArray(dailyData.usage)) {
             dailyData.usage.forEach(item => {
+                // Если модель тестовая — полностью игнорируем её в статистике
+                if (item.model && IGNORED_MODELS.includes(item.model)) {
+                    return;
+                }
+
                 const cost = item.cost_usd || 0;
                 spentMonth += cost;
 
@@ -61,36 +66,32 @@ export default async function handler(req, res) {
                 }
 
                 if (item.model) {
-                    // Переименовываем модель для группировки в топ
                     const cleanName = MODEL_NAMES[item.model] || item.model;
                     modelRequestsMap[cleanName] = (modelRequestsMap[cleanName] || 0) + (item.requests || 0);
                 }
             });
         }
 
-        // Формируем топ популярных моделей для графика
+        // Формируем топ популярных моделей
         const popularModels = Object.entries(modelRequestsMap)
             .map(([name, requests]) => ({ name, requests }))
             .sort((a, b) => b.requests - a.requests);
 
-        // 3. Формируем историю последних запросов
-        const history = (usageData.usage || []).map(item => {
-            const rawModel = item.model || 'image-edit';
-            // Подставляем понятное название, если его нет — оставляем оригинал
-            const friendlyModelName = MODEL_NAMES[rawModel] || rawModel;
+        // 3. Формируем историю последних запросов без тестов
+        const history = (usageData.usage || [])
+            .filter(item => item.model && !IGNORED_MODELS.includes(item.model)) // убираем тесты из логов
+            .map(item => {
+                const rawModel = item.model || 'image-edit';
+                const friendlyModelName = MODEL_NAMES[rawModel] || rawModel;
 
-            const timeFormatted = item.timestamp 
-                ? new Date(item.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
-                : '--:--';
+                return {
+                    timestamp: item.timestamp,
+                    model: friendlyModelName,
+                    cost_usd: item.cost_usd || 0
+                };
+            })
+            .slice(0, 8); // оставляем аккуратный топ-8 для таблицы
 
-            return {
-                timestamp: item.timestamp, // Передаем оригинальный таймстамп для фронта
-                model: friendlyModelName,
-                cost_usd: item.cost_usd || 0
-            };
-        });
-
-        // Отправляем чистый структурированный JSON на фронтенд
         return res.status(200).json({
             balance: currentBalance,
             spentToday: Number(spentToday.toFixed(4)),
