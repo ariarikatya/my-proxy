@@ -1,5 +1,4 @@
 export default async function handler(req, res) {
-    // Настройка CORS для фронтенда
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -16,7 +15,9 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "API key is missing in Vercel settings" });
     }
 
-    // Сокращенный словарь названий моделей
+    // Получаем количество дней из запроса фронтенда, по умолчанию 30
+    const days = req.query.days || 30;
+
     const MODEL_NAMES = {
         'klein': 'Ландшафтный дизайн',
         'gpt-image-2': 'Чертеж дизайна',
@@ -24,14 +25,14 @@ export default async function handler(req, res) {
         'gpt-5.4-mini-2026-03-17': 'Распознавание растений'
     };
 
-    // Список тестовых моделей, которые нужно полностью скрыть
     const IGNORED_MODELS = ['openai-fast', 'gemini-fast'];
 
     try {
         const [balanceRes, dailyRes, usageRes] = await Promise.all([
             fetch('https://gen.pollinations.ai/account/balance', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
-            fetch('https://gen.pollinations.ai/account/usage/daily?days=30', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
-            fetch('https://gen.pollinations.ai/account/usage?limit=20', { headers: { 'Authorization': `Bearer ${API_KEY}` } }) // увеличен лимит, чтобы после фильтрации остались элементы
+            // Подставляем динамическое количество дней сюда
+            fetch(`https://gen.pollinations.ai/account/usage/daily?days=${days}`, { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
+            fetch('https://gen.pollinations.ai/account/usage?limit=20', { headers: { 'Authorization': `Bearer ${API_KEY}` } })
         ]);
 
         if (!balanceRes.ok || !dailyRes.ok || !usageRes.ok) {
@@ -42,10 +43,8 @@ export default async function handler(req, res) {
         const dailyData = await dailyRes.json();
         const usageData = await usageRes.json();
 
-        // 1. Текущий баланс
         const currentBalance = balanceData.balance !== undefined ? balanceData.balance : 0.00;
 
-        // 2. Расчет расходов за сегодня и 30 дней с фильтрацией тестов
         const todayStr = new Date().toISOString().split('T')[0];
         let spentToday = 0;
         let spentMonth = 0;
@@ -53,7 +52,6 @@ export default async function handler(req, res) {
 
         if (dailyData.usage && Array.isArray(dailyData.usage)) {
             dailyData.usage.forEach(item => {
-                // Если модель тестовая — полностью игнорируем её в статистике
                 if (item.model && IGNORED_MODELS.includes(item.model)) {
                     return;
                 }
@@ -72,25 +70,18 @@ export default async function handler(req, res) {
             });
         }
 
-        // Формируем топ популярных моделей
         const popularModels = Object.entries(modelRequestsMap)
             .map(([name, requests]) => ({ name, requests }))
             .sort((a, b) => b.requests - a.requests);
 
-        // 3. Формируем историю последних запросов без тестов
         const history = (usageData.usage || [])
-            .filter(item => item.model && !IGNORED_MODELS.includes(item.model)) // убираем тесты из логов
-            .map(item => {
-                const rawModel = item.model || 'image-edit';
-                const friendlyModelName = MODEL_NAMES[rawModel] || rawModel;
-
-                return {
-                    timestamp: item.timestamp,
-                    model: friendlyModelName,
-                    cost_usd: item.cost_usd || 0
-                };
-            })
-            .slice(0, 8); // оставляем аккуратный топ-8 для таблицы
+            .filter(item => item.model && !IGNORED_MODELS.includes(item.model))
+            .map(item => ({
+                timestamp: item.timestamp,
+                model: MODEL_NAMES[item.model] || item.model,
+                cost_usd: item.cost_usd || 0
+            }))
+            .slice(0, 8);
 
         return res.status(200).json({
             balance: currentBalance,
