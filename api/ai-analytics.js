@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // Разрешаем фронтенду слать запросы (CORS)
+    // Настройка CORS для фронтенда
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
@@ -16,15 +16,24 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: "API key is missing in Vercel settings" });
     }
 
+    // Твой словарь для переименования моделей под заказчика
+    const MODEL_NAMES = {
+        'klein': 'Генератор ландшафтного дизайна',
+        'gpt-image-2': 'Чертеж дизайна',
+        'gpt-5.4-mini': 'Распознавание и помощь по растениям',
+        'gpt-5.4-mini-2026-03-17': 'Распознавание и помощь по растениям', // Учитываем полную версию с датой
+        'openai-fast': 'Быстрый чат-ассистент',
+        'gemini-fast': 'Анализ документов'
+    };
+
     try {
-        // Делаем 3 параллельных запроса к Pollinations, чтобы собрать ВСЕ нужные данные
+        // Делаем параллельные запросы к нужным эндпоинтам Pollinations
         const [balanceRes, dailyRes, usageRes] = await Promise.all([
             fetch('https://gen.pollinations.ai/account/balance', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
             fetch('https://gen.pollinations.ai/account/usage/daily?days=30', { headers: { 'Authorization': `Bearer ${API_KEY}` } }),
             fetch('https://gen.pollinations.ai/account/usage?limit=10', { headers: { 'Authorization': `Bearer ${API_KEY}` } })
         ]);
 
-        // Проверяем ответы
         if (!balanceRes.ok || !dailyRes.ok || !usageRes.ok) {
             return res.status(500).json({ error: "One of Pollinations API endpoints returned an error" });
         }
@@ -33,13 +42,11 @@ export default async function handler(req, res) {
         const dailyData = await dailyRes.json();
         const usageData = await usageRes.json();
 
-        // --- ЛОГИКА РАСЧЕТА ДАННЫХ ДЛЯ ТВОЕГО ФРОНТЕНДА ---
-
         // 1. Текущий баланс
         const currentBalance = balanceData.balance !== undefined ? balanceData.balance : 0.00;
 
-        // 2. Расчет расходов (сегодня и месяц) на основе daily-статистики
-        const todayStr = new Date().toISOString().split('T')[0]; // ГГГГ-ММ-ДД
+        // 2. Расчет расходов за сегодня и 30 дней
+        const todayStr = new Date().toISOString().split('T')[0];
         let spentToday = 0;
         let spentMonth = 0;
         const modelRequestsMap = {};
@@ -47,46 +54,47 @@ export default async function handler(req, res) {
         if (dailyData.usage && Array.isArray(dailyData.usage)) {
             dailyData.usage.forEach(item => {
                 const cost = item.cost_usd || 0;
-                spentMonth += cost; // Суммируем всё за 30 дней
+                spentMonth += cost;
 
-                // Если дата совпадает с сегодняшней
                 if (item.date && item.date.startsWith(todayStr)) {
                     spentToday += cost;
                 }
 
-                // Считаем общие запросы по моделям для графика популярности
                 if (item.model) {
-                    modelRequestsMap[item.model] = (modelRequestsMap[item.model] || 0) + (item.requests || 0);
+                    // Переименовываем модель для группировки в топ
+                    const cleanName = MODEL_NAMES[item.model] || item.model;
+                    modelRequestsMap[cleanName] = (modelRequestsMap[cleanName] || 0) + (item.requests || 0);
                 }
             });
         }
 
-        // 3. Формируем топ популярных моделей
+        // Формируем топ популярных моделей для графика
         const popularModels = Object.entries(modelRequestsMap)
             .map(([name, requests]) => ({ name, requests }))
-            .sort((a, b) => b.requests - a.requests)
-            .slice(0, 5); // Берем топ-5 моделей
+            .sort((a, b) => b.requests - a.requests);
 
-        // 4. Формируем историю последних 10 запросов
+        // 3. Формируем историю последних запросов
         const history = (usageData.usage || []).map(item => {
-            // Форматируем дату из ISO строки в понятный формат
-            const dateFormatted = item.timestamp 
-                ? new Date(item.timestamp).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                : 'Неизвестно';
+            const rawModel = item.model || 'image-edit';
+            // Подставляем понятное название, если его нет — оставляем оригинал
+            const friendlyModelName = MODEL_NAMES[rawModel] || rawModel;
+
+            const timeFormatted = item.timestamp 
+                ? new Date(item.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+                : '--:--';
 
             return {
-                date: dateFormatted,
-                model: item.model || 'ИИ Модель',
-                tokens: (item.input_text_tokens || 0) + (item.output_text_tokens || 0), // Сумма входных и выходных токенов
-                status: item.cost_usd !== undefined ? `-$${item.cost_usd.toFixed(4)}` : 'Успешно' // Покажем стоимость прямо в статус
+                timestamp: item.timestamp, // Передаем оригинальный таймстамп для фронта
+                model: friendlyModelName,
+                cost_usd: item.cost_usd || 0
             };
         });
 
-        // Отправляем всё это на фронтенд
+        // Отправляем чистый структурированный JSON на фронтенд
         return res.status(200).json({
             balance: currentBalance,
             spentToday: Number(spentToday.toFixed(4)),
-            spentMonth: Number(spentMonth.toFixed(2)),
+            spentMonth: Number(spentMonth.toFixed(3)),
             popularModels: popularModels.length > 0 ? popularModels : [{ name: 'Нет запросов', requests: 0 }],
             history: history
         });
